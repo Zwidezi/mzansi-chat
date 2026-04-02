@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MzansiChat</string>
+    <string name="title_activity_main">MzansiChat</string>
+    <string name="package_name">com.mzansichat.app</string>
+    <string name="custom_url_scheme">com.mzansichat.app</string>
+</resources>
