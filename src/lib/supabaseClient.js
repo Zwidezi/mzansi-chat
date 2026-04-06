@@ -1,6 +1,388 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://uweiptzbtpojnowyozdzf.supabase.co';
+const supabaseUrl = 'https://uweiptzbtpojnwyozdzf.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3ZWlwdHpidHBvam53eW96ZHpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMjI1NDksImV4cCI6MjA5MDY5ODU0OX0.NG39vNere5VRGb66WyWnoQ8sbGOTnBQD5rx6Hkmchgo';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+export const bufferToBase64 = (buffer) => {
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+};
+
+// ═══════════════════════════════════════
+// Recovery Key Auth System
+// ═══════════════════════════════════════
+
+const WORD_LIST = [
+  'braai','ubuntu','sharp','lekker','jozi','protea','madiba','rooibos',
+  'shisa','nyama','biltong','soweto','durban','cape','mzansi','vuvuzela',
+  'amandla','sawubona','stoep','kraal','dassie','fynbos','jacaranda','tugela',
+  'karoo','rand','tsotsi','indaba','sangoma','marabi','gumboot','mbira'
+];
+
+// Generate 3 random recovery words
+export const generateRecoveryKey = () => {
+  const words = [];
+  const used = new Set();
+  while (words.length < 3) {
+    const idx = Math.floor(Math.random() * WORD_LIST.length);
+    if (!used.has(idx)) {
+      used.add(idx);
+      words.push(WORD_LIST[idx]);
+    }
+  }
+  return words;
+};
+
+// Simple hash for recovery words (not crypto-grade, but functional)
+const hashWords = async (words) => {
+  const text = words.join('-').toLowerCase();
+  const encoder = new TextEncoder();
+  const data = encoder.encode(text);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+};
+
+// Sign Up — create a real user in Supabase
+export const signUpUser = async ({ handle, name, profilePic, recoveryWords }) => {
+  const recoveryHash = await hashWords(recoveryWords);
+  
+  const { data, error } = await supabase
+    .from('users')
+    .insert([{
+      handle: handle.toLowerCase(),
+      name,
+      profile_pic: profilePic,
+      recovery_hash: recoveryHash,
+    }])
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === '23505') {
+      return { error: 'This handle is already taken. Try another one!' };
+    }
+    return { error: error.message };
+  }
+
+  return { user: data };
+};
+
+// Sign In — verify recovery words against stored hash
+export const signInUser = async (handle, recoveryWords) => {
+  const recoveryHash = await hashWords(recoveryWords);
+  
+  // Fetch user by handle first
+  const { data: users, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('handle', handle.toLowerCase());
+
+  if (error) return { error: error.message };
+  
+  // Find user with matching hash
+  const user = users?.find(u => u.recovery_hash === recoveryHash);
+
+  if (!user) {
+    return { error: 'Invalid handle or recovery key. Double check your words!' };
+  }
+
+  return { user: user };
+};
+
+// Get user by handle
+export const getUser = async (handle) => {
+  const { data } = await supabase
+    .from('users')
+    .select('*')
+    .eq('handle', handle.toLowerCase())
+    .maybeSingle();
+  return data;
+};
+
+// Update user profile
+export const updateUser = async (handle, updates) => {
+  const { data, error } = await supabase
+    .from('users')
+    .update(updates)
+    .eq('handle', handle.toLowerCase())
+    .select()
+    .single();
+  return { user: data, error };
+};
+
+// Set user online status
+export const setOnlineStatus = async (handle, isOnline) => {
+  await supabase
+    .from('users')
+    .update({ is_online: isOnline, last_seen: new Date().toISOString() })
+    .eq('handle', handle.toLowerCase());
+};
+
+// Save user's OneSignal player ID
+export const updateUserStats = async (handle, newStats) => {
+  const { data, error } = await supabase
+    .from('users')
+    .update({ stats: newStats })
+    .eq('handle', handle.toLowerCase())
+    .select()
+    .single();
+  return { user: data, error };
+};
+export const updateUserVerification = async (handle, name, isVerified) => {
+  const { data, error } = await supabase
+    .from('users')
+    .update({ name, is_verified: isVerified })
+    .eq('handle', handle.toLowerCase())
+    .select()
+    .single();
+  return { user: data, error };
+};
+export const saveOneSignalId = async (handle, oneSignalId) => {
+  const { data, error } = await supabase
+    .from('users')
+    .update({ onesignal_id: oneSignalId })
+    .eq('handle', handle.toLowerCase())
+    .select()
+    .single();
+  return { user: data, error };
+};
+
+// ═══════════════════════════════════════
+// WebAuthn / Biometric Helpers
+// ═══════════════════════════════════════
+
+export const saveWebAuthnCredential = async (handle, credential) => {
+  const { data, error } = await supabase
+    .from('webauthn_credentials')
+    .insert([{
+      user_handle: handle.toLowerCase(),
+      credential_id: credential.id,
+      public_key: credential.publicKey, // Base64 or Hex
+      counter: 0
+    }])
+    .select()
+    .single();
+  
+  return { data, error };
+};
+
+export const getWebAuthnCredentials = async (handle) => {
+  const { data, error } = await supabase
+    .from('webauthn_credentials')
+    .select('*')
+    .eq('user_handle', handle.toLowerCase());
+    
+  return { data, error };
+};
+
+// ═══════════════════════════════════════
+// Communities
+// ═══════════════════════════════════════
+
+export const getCommunities = async () => {
+  const { data, error } = await supabase
+    .from('communities')
+    .select('*')
+    .order('member_count', { ascending: false });
+  
+  if (error) return [];
+  return data;
+};
+
+export const joinCommunity = async (communityId, userHandle) => {
+  // Add member
+  const { error } = await supabase
+    .from('community_members')
+    .insert([{ community_id: communityId, user_handle: userHandle }]);
+  
+  if (!error) {
+    // Increment member count
+    const { data: comm } = await supabase
+      .from('communities')
+      .select('member_count')
+      .eq('id', communityId)
+      .single();
+    
+    if (comm) {
+      await supabase
+        .from('communities')
+        .update({ member_count: comm.member_count + 1 })
+        .eq('id', communityId);
+    }
+  }
+  
+  return { error };
+};
+
+export const createCommunity = async (name, description, tag, ownerHandle) => {
+  const { data, error } = await supabase
+    .from('communities')
+    .insert([{ name, description, tag, owner_handle: ownerHandle.toLowerCase(), member_count: 1 }])
+    .select()
+    .single();
+    
+  if (data) {
+    await joinCommunity(data.id, ownerHandle);
+  }
+  return { data, error };
+};
+
+export const updateCommunity = async (communityId, updates) => {
+  const { data, error } = await supabase
+    .from('communities')
+    .update(updates)
+    .eq('id', communityId)
+    .select()
+    .single();
+  return { data, error };
+};
+
+export const deleteMessage = async (messageId) => {
+  const { error } = await supabase
+    .from('messages')
+    .delete()
+    .eq('id', messageId);
+  return { error };
+};
+
+export const getJoinedCommunities = async (userHandle) => {
+  const { data, error } = await supabase
+    .from('community_members')
+    .select(`
+      community_id,
+      communities (*)
+    `)
+    .eq('user_handle', userHandle.toLowerCase());
+  
+  if (error) return [];
+  return data.map(item => item.communities);
+};
+
+// ═══════════════════════════════════════
+// Messages (enhanced)
+// ═══════════════════════════════════════
+
+export const sendMessage = async (chatId, senderHandle, senderName, content, type = 'text', metadata = {}) => {
+  const { data, error } = await supabase
+    .from('messages')
+    .insert([{
+      chat_id: chatId,
+      sender_handle: senderHandle,
+      sender_name: senderName,
+      content,
+      type,
+      metadata
+    }])
+    .select()
+    .single();
+  
+  return { message: data, error };
+};
+
+export const getMessages = async (chatId) => {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('*')
+    .eq('chat_id', chatId)
+    .order('created_at', { ascending: true });
+  
+  if (error) return [];
+  return data;
+};
+
+// Subscribe to new messages in real-time
+export const subscribeToMessages = (callback) => {
+  return supabase
+    .channel('mzansichat_realtime')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+      callback(payload.new);
+    })
+    .subscribe();
+};
+
+// Generate a unique chat ID for 1-on-1 DMs
+export const getDmChatId = (handle1, handle2) => {
+  return [handle1.toLowerCase(), handle2.toLowerCase()].sort().join('_');
+};
+
+// ═══════════════════════════════════════
+// Storage (Media Buckets)
+// ═══════════════════════════════════════
+
+export const uploadMedia = async (file, pathPrefix = 'media') => {
+  if (!file) return { error: 'No file provided' };
+  
+  // Generate a clean filename: timestamp-random.ext
+  const ext = file.name ? file.name.split('.').pop() : (file.type === 'audio/webm' ? 'webm' : 'bin');
+  const fileName = `${pathPrefix}/${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${ext}`;
+
+  const { data, error } = await supabase.storage
+    .from('mzansichat_media')
+    .upload(fileName, file, {
+      cacheControl: '3600',
+      upsert: false
+    });
+
+  if (error) {
+    console.error('Storage Upload Error:', error);
+    return { error: error.message };
+  }
+
+  const { data: publicUrlData } = supabase.storage
+    .from('mzansichat_media')
+    .getPublicUrl(fileName);
+
+  return { url: publicUrlData.publicUrl };
+};
+
+// ═══════════════════════════════════════
+// Statuses (Stories)
+// ═══════════════════════════════════════
+
+export const uploadStatusFile = async (userHandle, file) => {
+  if (!userHandle || !file) return { error: 'Missing handle or file' };
+  
+  // 1. Upload to bucket
+  const { url, error: uploadError } = await uploadMedia(file, 'statuses');
+  if (uploadError) return { error: uploadError };
+
+  // 2. Identify type (heuristic for video or image)
+  const isVideo = file.type?.startsWith('video/') || false;
+
+  // 3. Save to database
+  const { data, error } = await supabase
+    .from('statuses')
+    .insert([{
+      user_handle: userHandle.toLowerCase(),
+      media_url: url,
+      media_type: isVideo ? 'video' : 'image'
+    }])
+    .select()
+    .single();
+
+  return { data, error };
+};
+
+export const getActiveStatuses = async () => {
+  // RLS will automatically filter out expired statuses
+  // We fetch them and group them by user
+  const { data, error } = await supabase
+    .from('statuses')
+    .select('*')
+    .order('created_at', { ascending: true }); // Chronological
+
+  if (error) return { data: [], error };
+
+  // Group by handle
+  const grouped = {};
+  data.forEach(status => {
+    if (!grouped[status.user_handle]) {
+      grouped[status.user_handle] = [];
+    }
+    grouped[status.user_handle].push(status);
+  });
+
+  return { data: grouped, error: null };
+};
