@@ -18,12 +18,12 @@ import OneSignal from 'react-onesignal';
 import { PaystackButton } from 'react-paystack';
 import GoogleAd from './components/common/GoogleAd';
 import { 
-  supabase, generateRecoveryKey, signUpUser, signInUser, 
+  supabase, generateRecoveryKey, signUpUser, signInUser, signOutUser, restoreSession, hashPinSecure,
   getCommunities, joinCommunity, sendMessage, getMessages, 
   subscribeToMessages, setOnlineStatus, getUser, getDmChatId, uploadMedia,
   saveOneSignalId, saveWebAuthnCredential, bufferToBase64, createCommunity,
   updateCommunity, deleteMessage, updateUserStats, updateUserVerification,
-  uploadStatusFile, getActiveStatuses
+  uploadStatusFile, getActiveStatuses, getJoinedCommunities, getWebAuthnCredentials
 } from './lib/supabaseClient';
 
 // --- Localization Engine ---
@@ -59,7 +59,7 @@ const TRANSLATIONS = {
     finish: "Finish Setup",
     change_pic: "Change Photo",
     recovery_title: "Your Recovery Key",
-    recovery_sub: "Write these 12 words down. This is the only way to recover your account.",
+    recovery_sub: "Write these 6 words down. This is the only way to recover your account.",
     privacy_100: "Privacy Score: 100%",
     business_title: "Mzansi Business Hub",
     business_sub: "Verify your spaza or taxi business and reach 10,000+ local users.",
@@ -99,7 +99,7 @@ const TRANSLATIONS = {
     finish: "Qedela Ukusetha",
     change_pic: "Shintsha Isithombe",
     recovery_title: "Isihluthulelo Sokubuyisela",
-    recovery_sub: "Bhala lawa magama ayi-12. Lena ukuphela kwendlela yokubuyisela i-akhawunti yakho.",
+    recovery_sub: "Bhala lawa magama ayi-6. Lena ukuphela kwendlela yokubuyisela i-akhawunti yakho.",
     privacy_100: "Isikolo Sobumfihlo: 100%",
     business_title: "Mzansi Business Hub",
     business_sub: "Qinisekisa ibhizinisi lakho (isiphaza noma itekisi) bafinyelele abasebenzisi abangu-10,000+.",
@@ -139,7 +139,7 @@ const TRANSLATIONS = {
     finish: "Voltooi Opstelling",
     change_pic: "Verander Foto",
     recovery_title: "Jou Herstelsleutel",
-    recovery_sub: "Skryf hierdie 12 woorde neer. Dit is die enigste manier om jou rekening te herwin.",
+    recovery_sub: "Skryf hierdie 6 woorde neer. Dit is die enigste manier om jou rekening te herwin.",
     privacy_100: "Privaatheid Telling: 100%",
     business_title: "Mzansi Business Hub",
     business_sub: "Verifieer jou spaza of taxi besigheid en bereik 10,000+ plaaslike gebruikers.",
@@ -360,7 +360,7 @@ const BiometricStep = ({ userHandle, onFinish, t }) => {
 
 const SignInStep = ({ onNext, onCancel, t, authError }) => {
   const [handle, setHandle] = useState("");
-  const [words, setWords] = useState(Array(3).fill(""));
+  const [words, setWords] = useState(Array(6).fill(""));
   const handleWordChange = (idx, val) => {
     const newWords = [...words];
     newWords[idx] = val.toLowerCase().trim();
@@ -831,6 +831,8 @@ const AppContent = ({ setGlobalHandle }) => {
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [inviter, setInviter] = useState(null);
+  const [savedHandle, setSavedHandle] = useState(() => localStorage.getItem('mzansi_handle') || '');
+  const [pinHash, setPinHash] = useState(() => localStorage.getItem('mzansi_pin_hash') || '');
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -838,10 +840,7 @@ const AppContent = ({ setGlobalHandle }) => {
     if (by) setInviter(by);
   }, [location.search]);
 
-  const hashPin = (pin) => {
-    // Simple but effective for local prototype
-    return pin.split('').reverse().join('mzansi') + pin.length;
-  };
+  // PIN hashing is now handled by hashPinSecure (PBKDF2) from supabaseClient
 
   const { incomingCall, answerCall, endCall, isCalling } = useCall();
   const activeChatId = location.pathname.startsWith('/chat/') ? location.pathname.split('/chat/')[1] : null;
@@ -905,7 +904,7 @@ const AppContent = ({ setGlobalHandle }) => {
   };
 
   const handlePinSetup = async (pin) => {
-    const hash = hashPin(pin);
+    const hash = await hashPinSecure(pin);
     setPinHash(hash);
     setSavedHandle(userMetadata.handle);
     localStorage.setItem('mzansi_pin_hash', hash);
@@ -930,14 +929,37 @@ const AppContent = ({ setGlobalHandle }) => {
     navigate('/');
   };
 
-  const handlePinLogin = (pin) => {
-    if (pin === "BIO_SUCCESS" || hashPin(pin) === pinHash) {
-      setAuthError('');
-      setOnlineStatus(savedHandle, true);
-      setIsOnboarded(true);
-      navigate('/');
+  const handlePinLogin = async (pin) => {
+    if (pin === "BIO_SUCCESS") {
+      // Biometric success — restore Supabase session and proceed
+      const session = await restoreSession();
+      if (session) {
+        setAuthError('');
+        setOnlineStatus(savedHandle, true);
+        setIsOnboarded(true);
+        navigate('/');
+      } else {
+        setAuthError('Session expired. Please sign in with your recovery key.');
+        setOnboardingStep('signin');
+      }
+      return;
+    }
+    
+    const hash = await hashPinSecure(pin);
+    if (hash === pinHash) {
+      // PIN correct — restore Supabase session
+      const session = await restoreSession();
+      if (session) {
+        setAuthError('');
+        setOnlineStatus(savedHandle, true);
+        setIsOnboarded(true);
+        navigate('/');
+      } else {
+        setAuthError('Session expired. Please sign in with your recovery key.');
+        setOnboardingStep('signin');
+      }
     } else {
-      setAuthError("Incorrect PIN. Please try again.");
+      setAuthError('Incorrect PIN. Please try again.');
     }
   };
 
@@ -1131,7 +1153,7 @@ const AppContent = ({ setGlobalHandle }) => {
           <Routes>
             <Route path="/" element={<Chats userHandle={userMetadata.handle} t={t} />} />
             <Route path="/updates" element={<Discovery t={t} userHandle={userMetadata.handle} />} />
-            <Route path="/profile" element={<ProfileManager userMetadata={userMetadata} setUserMetadata={setUserMetadata} language={language} setLanguage={setLanguage} t={t} onLogout={() => { setIsOnboarded(false); setOnboardingStep(-1); }} />} />
+            <Route path="/profile" element={<ProfileManager userMetadata={userMetadata} setUserMetadata={setUserMetadata} language={language} setLanguage={setLanguage} t={t} onLogout={async () => { await signOutUser(); localStorage.removeItem('mzansi_onboarded'); localStorage.removeItem('mzansi_user'); localStorage.removeItem('mzansi_handle'); localStorage.removeItem('mzansi_pin_hash'); setIsOnboarded(false); setPinHash(''); setSavedHandle(''); setOnboardingStep(0); navigate('/'); }} />} />
             <Route path="/business" element={<BusinessHub userMetadata={userMetadata} setUserMetadata={setUserMetadata} onBack={() => navigate('/profile')} t={t} />} />
             <Route path="/settings" element={<Settings gatekeeperEnabled={true} setGatekeeperEnabled={()=>{}} userMetadata={userMetadata} t={t} />} />
             <Route path="/chat/:id" element={<ChatDetailWrapper gatekeeperEnabled={true} privacyEnabled={true} userMetadata={userMetadata} messageHistory={messageHistory} onSendMessage={handleSendMessage} isTyping={isTyping} t={t} />} />
@@ -1152,8 +1174,6 @@ const AppContent = ({ setGlobalHandle }) => {
        </nav>
     </div>
   );
-};
-
 };
 
 const StatusViewer = ({ statuses, userHandle, onClose }) => {
@@ -1215,7 +1235,7 @@ const StatusViewer = ({ statuses, userHandle, onClose }) => {
       <div className="status-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <div className="calling-avatar-sm" style={{ width: '32px', height: '32px', fontSize: '1rem', background: 'var(--primary)', color: 'white' }}>
-            {userHandle[0].toUpperCase()}
+            {userHandle?.[0]?.toUpperCase() || '?'}
           </div>
           <span style={{ fontWeight: '800', textShadow: '0 1px 4px rgba(0,0,0,0.8)' }}>@{userHandle}</span>
         </div>
@@ -1275,6 +1295,7 @@ const Discovery = ({ t, userHandle }) => {
     setGroupedStatuses(statusData || {});
     setLoading(false);
   };
+  const handleCreate = async () => {
     if (!userHandle || !newComm.name) return;
     setLoading(true);
     const { data, error } = await createCommunity(newComm.name, newComm.description, newComm.tag, userHandle);
@@ -1341,7 +1362,7 @@ const Discovery = ({ t, userHandle }) => {
             <div key={handle} onClick={() => setViewingUser(handle)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', minWidth: '70px', cursor: 'pointer' }}>
               <div style={{ position: 'relative', width: '64px', height: '64px', padding: '3px', borderRadius: '32px', border: '2px solid var(--primary)' }}>
                 <div style={{ width: '100%', height: '100%', borderRadius: '30px', background: 'var(--surface-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                  <span style={{ color: 'var(--primary)', fontWeight: '800' }}>{handle[0].toUpperCase()}</span>
+                  <span style={{ color: 'var(--primary)', fontWeight: '800' }}>{handle?.[0]?.toUpperCase() || '?'}</span>
                 </div>
               </div>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>@{handle}</span>
@@ -1652,8 +1673,11 @@ const ChatDetail = ({ gatekeeperEnabled, privacyEnabled, userMetadata, messages,
   const navigate = useNavigate();
   const { id } = useParams();
   const [searchParams] = useSearchParams();
+  const isAI = id === 'lindiwe';
+  const isGroup = !isAI && !id.includes('_');
   const [inputText, setInputText] = useState("");
   const [showActionSheet, setShowActionSheet] = useState(false);
+  const [showBankModal, setShowBankModal] = useState(false);
   const [isPaying, setIsPaying] = useState(false);
   
   const BANK_SCHEMES = {

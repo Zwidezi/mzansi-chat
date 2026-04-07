@@ -22,6 +22,16 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Fail loudly on missing environment variables
+  if (!supabaseServiceKey) {
+    console.error('FATAL: SUPABASE_SERVICE_KEY is not set in environment variables.');
+    return res.status(500).json({ error: 'Server misconfiguration: missing SUPABASE_SERVICE_KEY' });
+  }
+  if (!ONESIGNAL_REST_API_KEY) {
+    console.error('FATAL: ONESIGNAL_REST_API_KEY is not set in environment variables.');
+    return res.status(500).json({ error: 'Server misconfiguration: missing ONESIGNAL_REST_API_KEY' });
+  }
+
   // Verify webhook secret (optional but recommended)
   const secret = req.headers['x-webhook-secret'];
   if (WEBHOOK_SECRET && secret !== WEBHOOK_SECRET) {
@@ -61,7 +71,7 @@ export default async function handler(req, res) {
       recipientHandles = handles.filter(h => h !== sender_handle);
     } else {
       // Group/Community — notify all members except sender
-      const supabase = createClient(supabaseUrl, supabaseServiceKey || '');
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
       
       const { data: members } = await supabase
         .from('community_members')

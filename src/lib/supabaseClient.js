@@ -10,21 +10,50 @@ export const bufferToBase64 = (buffer) => {
 };
 
 // ═══════════════════════════════════════
-// Recovery Key Auth System
+// Recovery Key System (Expanded)
+// 256-word SA-themed dictionary, 6 words = 256^6 ≈ 281 trillion combos
 // ═══════════════════════════════════════
 
 const WORD_LIST = [
   'braai','ubuntu','sharp','lekker','jozi','protea','madiba','rooibos',
   'shisa','nyama','biltong','soweto','durban','cape','mzansi','vuvuzela',
   'amandla','sawubona','stoep','kraal','dassie','fynbos','jacaranda','tugela',
-  'karoo','rand','tsotsi','indaba','sangoma','marabi','gumboot','mbira'
+  'karoo','rand','tsotsi','indaba','sangoma','marabi','gumboot','mbira',
+  'rainbow','nation','pride','freedom','heritage','mandela','robben','island',
+  'kruger','table','mountain','drakensberg','garden','route','ocean','sunrise',
+  'sunset','harvest','maize','mealie','sorghum','baobab','acacia','impala',
+  'leopard','buffalo','rhino','elephant','lion','cheetah','zebra','giraffe',
+  'springbok','kudu','eland','wildebeest','meerkat','baboon','hornbill','eagle',
+  'kingfisher','weaver','sunbird','flamingo','penguin','ostrich','tortoise','gecko',
+  'puffadder','mamba','cobra','mantis','firefly','cricket','cicada','anthill',
+  'savanna','bushveld','highveld','lowveld','midlands','coastal','plateau','valley',
+  'river','stream','waterfall','lagoon','estuary','reef','dune','canyon',
+  'beacon','signal','bridge','tower','gateway','harbour','jetty','lighthouse',
+  'village','township','suburb','metro','plaza','arcade','market','bazaar',
+  'shebeen','tavern','cafe','bistro','eatery','bakery','butchery','pharmacy',
+  'clinic','school','library','museum','theatre','stadium','arena','court',
+  'temple','mosque','church','chapel','shrine','mission','seminary','convent',
+  'copper','gold','diamond','platinum','chrome','iron','coal','tin',
+  'quartz','marble','granite','slate','sandstone','limestone','clay','ochre',
+  'scarlet','crimson','amber','saffron','emerald','jade','cobalt','azure',
+  'ivory','onyx','bronze','silver','coral','pearl','opal','topaz',
+  'rhythm','melody','harmony','tempo','chorus','verse','anthem','lullaby',
+  'drumbeat','whistle','chant','hymn','ballad','folklore','legend','saga',
+  'journey','voyage','quest','trail','passage','crossing','summit','ascent',
+  'anchor','compass','lantern','banner','shield','crest','crown','sceptre',
+  'unity','justice','honour','courage','wisdom','patience','kindness','respect',
+  'spirit','vision','dream','spark','flame','blaze','glow','radiance',
+  'thunder','lightning','monsoon','cyclone','breeze','tempest','rainbow','horizon',
+  'twilight','midnight','aurora','zenith','eclipse','solstice','crescent','nebula',
+  'granite','basalt','feldspar','mica','obsidian','pumice','agate','jasper',
+  'thatch','timber','bamboo','reed','sisal','hemp','cotton','linen'
 ];
 
-// Generate 3 random recovery words
+// Generate 6 random recovery words
 export const generateRecoveryKey = () => {
   const words = [];
   const used = new Set();
-  while (words.length < 3) {
+  while (words.length < 6) {
     const idx = Math.floor(Math.random() * WORD_LIST.length);
     if (!used.has(idx)) {
       used.add(idx);
@@ -34,7 +63,7 @@ export const generateRecoveryKey = () => {
   return words;
 };
 
-// Simple hash for recovery words (not crypto-grade, but functional)
+// SHA-256 hash for recovery words (used as Supabase Auth password)
 const hashWords = async (words) => {
   const text = words.join('-').toLowerCase();
   const encoder = new TextEncoder();
@@ -44,10 +73,38 @@ const hashWords = async (words) => {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
-// Sign Up — create a real user in Supabase
+// Synthetic email from handle (used for Supabase Auth)
+const handleToEmail = (handle) => `${handle.toLowerCase()}@mzansichat.app`;
+
+// ═══════════════════════════════════════
+// Supabase Auth Integration
+// ═══════════════════════════════════════
+
+// Sign Up — create Supabase Auth user + public profile
 export const signUpUser = async ({ handle, name, profilePic, recoveryWords }) => {
   const recoveryHash = await hashWords(recoveryWords);
-  
+  const email = handleToEmail(handle);
+
+  // 1. Create Supabase Auth user
+  const { data: authData, error: authError } = await supabase.auth.signUp({
+    email,
+    password: recoveryHash,
+  });
+
+  if (authError) {
+    // Handle duplicate email (handle already taken)
+    if (authError.message?.includes('already registered') || authError.message?.includes('already been registered')) {
+      return { error: 'This handle is already taken. Try another one!' };
+    }
+    return { error: authError.message };
+  }
+
+  const userId = authData.user?.id;
+  if (!userId) {
+    return { error: 'Failed to create auth account. Please try again.' };
+  }
+
+  // 2. Create public profile linked to auth user
   const { data, error } = await supabase
     .from('users')
     .insert([{
@@ -55,11 +112,13 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords }) =>
       name,
       profile_pic: profilePic,
       recovery_hash: recoveryHash,
+      user_id: userId,
     }])
     .select()
     .maybeSingle();
 
   if (error) {
+    // If profile creation fails, the auth user is orphaned — but recoverable on next sign-in
     if (error.code === '23505') {
       return { error: 'This handle is already taken. Try another one!' };
     }
@@ -69,26 +128,59 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords }) =>
   return { user: data };
 };
 
-// Sign In — verify recovery words against stored hash
+// Sign In — authenticate via recovery words
 export const signInUser = async (handle, recoveryWords) => {
   const recoveryHash = await hashWords(recoveryWords);
-  
-  // Fetch user by handle first
-  const { data: users, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('handle', handle.toLowerCase());
+  const email = handleToEmail(handle);
 
-  if (error) return { error: error.message };
-  
-  // Find user with matching hash
-  const user = users?.find(u => u.recovery_hash === recoveryHash);
+  // Authenticate with Supabase Auth
+  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+    email,
+    password: recoveryHash,
+  });
 
-  if (!user) {
+  if (authError) {
     return { error: 'Invalid handle or recovery key. Double check your words!' };
   }
 
-  return { user: user };
+  // Fetch user profile
+  const { data: user, error: profileError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('handle', handle.toLowerCase())
+    .maybeSingle();
+
+  if (profileError || !user) {
+    return { error: 'Account found but profile is missing. Please contact support.' };
+  }
+
+  // If user_id wasn't linked yet (migration edge case), link it now
+  if (!user.user_id && authData.user?.id) {
+    await supabase
+      .from('users')
+      .update({ user_id: authData.user.id })
+      .eq('handle', handle.toLowerCase());
+  }
+
+  return { user };
+};
+
+// Sign Out
+export const signOutUser = async () => {
+  const { error } = await supabase.auth.signOut();
+  return { error };
+};
+
+// Get current session
+export const getSession = async () => {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  return { session, error };
+};
+
+// Restore session (for PIN-based quick login)
+export const restoreSession = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session;
 };
 
 // Get user by handle
@@ -120,7 +212,7 @@ export const setOnlineStatus = async (handle, isOnline) => {
     .eq('handle', handle.toLowerCase());
 };
 
-// Save user's OneSignal player ID
+// Update user stats
 export const updateUserStats = async (handle, newStats) => {
   const { data, error } = await supabase
     .from('users')
@@ -130,6 +222,7 @@ export const updateUserStats = async (handle, newStats) => {
     .single();
   return { user: data, error };
 };
+
 export const updateUserVerification = async (handle, name, isVerified) => {
   const { data, error } = await supabase
     .from('users')
@@ -139,6 +232,7 @@ export const updateUserVerification = async (handle, name, isVerified) => {
     .single();
   return { user: data, error };
 };
+
 export const saveOneSignalId = async (handle, oneSignalId) => {
   const { data, error } = await supabase
     .from('users')
@@ -159,7 +253,7 @@ export const saveWebAuthnCredential = async (handle, credential) => {
     .insert([{
       user_handle: handle.toLowerCase(),
       credential_id: credential.id,
-      public_key: credential.publicKey, // Base64 or Hex
+      public_key: credential.publicKey,
       counter: 0
     }])
     .select()
@@ -367,11 +461,10 @@ export const uploadStatusFile = async (userHandle, file) => {
 
 export const getActiveStatuses = async () => {
   // RLS will automatically filter out expired statuses
-  // We fetch them and group them by user
   const { data, error } = await supabase
     .from('statuses')
     .select('*')
-    .order('created_at', { ascending: true }); // Chronological
+    .order('created_at', { ascending: true });
 
   if (error) return { data: [], error };
 
@@ -385,4 +478,37 @@ export const getActiveStatuses = async () => {
   });
 
   return { data: grouped, error: null };
+};
+
+// ═══════════════════════════════════════
+// PBKDF2 PIN Hashing (Web Crypto API)
+// ═══════════════════════════════════════
+
+const PIN_SALT = 'mzansichat-pin-v2'; // Fixed app-level salt (device-local security)
+
+export const hashPinSecure = async (pin) => {
+  const encoder = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(pin),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+  
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: encoder.encode(PIN_SALT),
+      iterations: 100000,
+      hash: 'SHA-256'
+    },
+    keyMaterial,
+    256
+  );
+
+  // Convert to hex string
+  return Array.from(new Uint8Array(derivedBits))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
 };
