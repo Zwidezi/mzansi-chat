@@ -10,9 +10,9 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://uweiptzbtpojnwyozdzf.supabase.co';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY; // Use service role key for server-side
-const ONESIGNAL_APP_ID = 'e15416de-5735-4b28-8b25-7c2f5a3c39cf';
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID;
 const ONESIGNAL_REST_API_KEY = process.env.ONESIGNAL_REST_API_KEY;
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
 
@@ -23,13 +23,11 @@ export default async function handler(req, res) {
   }
 
   // Fail loudly on missing environment variables
-  if (!supabaseServiceKey) {
-    console.error('FATAL: SUPABASE_SERVICE_KEY is not set in environment variables.');
-    return res.status(500).json({ error: 'Server misconfiguration: missing SUPABASE_SERVICE_KEY' });
-  }
-  if (!ONESIGNAL_REST_API_KEY) {
-    console.error('FATAL: ONESIGNAL_REST_API_KEY is not set in environment variables.');
-    return res.status(500).json({ error: 'Server misconfiguration: missing ONESIGNAL_REST_API_KEY' });
+  const missingVars = ['SUPABASE_URL', 'SUPABASE_SERVICE_KEY', 'ONESIGNAL_APP_ID', 'ONESIGNAL_REST_API_KEY']
+    .filter(v => !process.env[v]);
+  if (missingVars.length > 0) {
+    console.error(`FATAL: Missing environment variables: ${missingVars.join(', ')}`);
+    return res.status(500).json({ error: `Server misconfiguration: missing ${missingVars.join(', ')}` });
   }
 
   // Verify webhook secret (optional but recommended)

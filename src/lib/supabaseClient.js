@@ -1,7 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://uweiptzbtpojnwyozdzf.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3ZWlwdHpidHBvam53eW96ZHpmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxMjI1NDksImV4cCI6MjA5MDY5ODU0OX0.NG39vNere5VRGb66WyWnoQ8sbGOTnBQD5rx6Hkmchgo';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    'Missing Supabase environment variables. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.'
+  );
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
@@ -81,7 +87,7 @@ const handleToEmail = (handle) => `${handle.toLowerCase()}@mzansichat.app`;
 // ═══════════════════════════════════════
 
 // Sign Up — create Supabase Auth user + public profile
-export const signUpUser = async ({ handle, name, profilePic, recoveryWords }) => {
+export const signUpUser = async ({ handle, name, profilePic, recoveryWords, referred_by }) => {
   const recoveryHash = await hashWords(recoveryWords);
   const email = handleToEmail(handle);
 
@@ -125,7 +131,24 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords }) =>
     return { error: error.message };
   }
 
+
+  // 3. Record referral if applicable
+  if (referred_by) {
+    await recordReferral(referred_by, handle.toLowerCase());
+  }
+
   return { user: data };
+};
+
+// Record a referral in the database
+export const recordReferral = async (referrerHandle, refereeHandle) => {
+  const { error } = await supabase
+    .from('referrals')
+    .insert([{
+      referrer_handle: referrerHandle.replace('@', '').toLowerCase(),
+      referee_handle: refereeHandle.toLowerCase()
+    }]);
+  return { error };
 };
 
 // Sign In — authenticate via recovery words
@@ -183,13 +206,19 @@ export const restoreSession = async () => {
   return session;
 };
 
-// Get user by handle
-export const getUser = async (handle) => {
-  const { data } = await supabase
-    .from('users')
-    .select('*')
-    .eq('handle', handle.toLowerCase())
-    .maybeSingle();
+// Get user by handle or user_id
+export const getUser = async (handle, userId = null) => {
+  let query = supabase.from('users').select('*');
+  
+  if (userId) {
+    query = query.eq('user_id', userId);
+  } else if (handle) {
+    query = query.eq('handle', handle.toLowerCase());
+  } else {
+    return null;
+  }
+
+  const { data } = await query.maybeSingle();
   return data;
 };
 
@@ -206,9 +235,12 @@ export const updateUser = async (handle, updates) => {
 
 // Set user online status
 export const setOnlineStatus = async (handle, isOnline) => {
+  const updates = { is_online: isOnline };
+  if (isOnline) updates.last_seen = new Date().toISOString();
+  
   await supabase
     .from('users')
-    .update({ is_online: isOnline, last_seen: new Date().toISOString() })
+    .update(updates)
     .eq('handle', handle.toLowerCase());
 };
 
@@ -394,6 +426,88 @@ export const subscribeToMessages = (callback) => {
       callback(payload.new);
     })
     .subscribe();
+};
+
+// Search users by handle (for starting new DMs)
+export const searchUsers = async (query, currentHandle) => {
+  if (!query || query.length < 2) return [];
+  
+  const { data, error } = await supabase
+    .from('users')
+    .select('handle, name, profile_pic, is_online, last_seen')
+    .ilike('handle', `%${query.toLowerCase()}%`)
+    .neq('handle', currentHandle?.toLowerCase() || '')
+    .limit(10);
+  
+  if (error) return [];
+  return data;
+};
+
+// Get recent DM conversations for the current user
+export const getRecentDMs = async (userHandle) => {
+  if (!userHandle) return [];
+  
+  const handle = userHandle.toLowerCase();
+  
+  // Fetch recent messages where this user is a participant in a DM
+  // DM chat_ids are formatted as "handle1_handle2" (sorted alphabetically)
+  const { data, error } = await supabase
+    .from('messages')
+    .select('*')
+    .like('chat_id', `%${handle}%`)
+    .order('created_at', { ascending: false })
+    .limit(200);
+  
+  if (error || !data) return [];
+  
+  // Filter to only DM conversations (chat_id contains '_' and includes this user's handle)
+  const dmMessages = data.filter(msg => {
+    const parts = msg.chat_id.split('_');
+    return parts.length === 2 && parts.includes(handle);
+  });
+  
+  // Group by chat_id and get the latest message per conversation
+  const conversations = {};
+  dmMessages.forEach(msg => {
+    if (!conversations[msg.chat_id]) {
+      const parts = msg.chat_id.split('_');
+      const otherHandle = parts.find(h => h !== handle);
+      conversations[msg.chat_id] = {
+        chatId: msg.chat_id,
+        otherHandle,
+        lastMessage: msg,
+        lastMessageTime: msg.created_at,
+      };
+    }
+  });
+  
+  // Convert to array and sort by most recent
+  const dmList = Object.values(conversations).sort(
+    (a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime)
+  );
+  
+  // Enrich with user profiles
+  const handles = dmList.map(dm => dm.otherHandle).filter(Boolean);
+  if (handles.length > 0) {
+    const { data: profiles } = await supabase
+      .from('users')
+      .select('handle, name, profile_pic, is_online')
+      .in('handle', handles);
+    
+    const profileMap = {};
+    (profiles || []).forEach(p => { profileMap[p.handle] = p; });
+    
+    dmList.forEach(dm => {
+      const profile = profileMap[dm.otherHandle];
+      if (profile) {
+        dm.otherName = profile.name;
+        dm.otherPic = profile.profile_pic;
+        dm.isOnline = profile.is_online;
+      }
+    });
+  }
+  
+  return dmList;
 };
 
 // Generate a unique chat ID for 1-on-1 DMs

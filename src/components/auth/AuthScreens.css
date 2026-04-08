@@ -1,0 +1,245 @@
+.onboarding-header {
+  margin-top: 40px;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.onboarding-header h2 {
+  font-size: 1.75rem;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.onboarding-header p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
+.header-icon {
+  color: var(--primary);
+  margin-bottom: 16px;
+}
+
+/* Avatar Section */
+.avatar-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.avatar-preview {
+  width: 80px;
+  height: 80px;
+  border-radius: 28px;
+  background: var(--surface-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1.5px solid var(--border);
+}
+
+.avatar-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Input Groups */
+.signup-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+.input-field {
+  text-align: left;
+}
+
+.input-field label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  margin-left: 4px;
+}
+
+.input-field input {
+  width: 100%;
+  background: var(--surface-light);
+  border: 1px solid var(--border);
+  padding: 14px 16px;
+  border-radius: 12px;
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.input-field input:focus {
+  border-color: var(--primary);
+}
+
+/* Recovery Key */
+.recovery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.word-chip {
+  background: var(--surface-light);
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.word-index {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--primary);
+  opacity: 0.8;
+}
+
+.word-text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Biometrics */
+.biometric-visual {
+  height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.biometric-icon {
+  color: var(--primary);
+  transition: transform 0.3s ease;
+}
+
+.biometric-pulse {
+  animation: bio-pulse 1.5s infinite ease-in-out;
+}
+
+@keyframes bio-pulse {
+  0% { transform: scale(1); opacity: 1; filter: drop-shadow(0 0 0px var(--primary)); }
+  50% { transform: scale(1.1); opacity: 0.7; filter: drop-shadow(0 0 20px var(--primary)); }
+  100% { transform: scale(1); opacity: 1; filter: drop-shadow(0 0 0px var(--primary)); }
+}
+
+.scanning-text {
+  margin-top: 20px;
+  font-weight: 800;
+  color: var(--primary);
+  letter-spacing: 0.1em;
+  font-size: 0.8rem;
+}
+
+/* PIN Step */
+.pin-display {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 40px 0;
+}
+
+.pin-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface-light);
+  border: 1px solid var(--border);
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.pin-dot.filled {
+  background: var(--primary);
+  transform: scale(1.2);
+  box-shadow: 0 0 10px var(--primary);
+}
+
+.pin-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  width: 100%;
+  max-width: 280px;
+  margin: 0 auto;
+}
+
+.pin-key {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  background: var(--surface-light);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.1s;
+  border: 1px solid var(--border);
+}
+
+.pin-key:active {
+  background: var(--surface);
+  transform: scale(0.95);
+}
+
+.pin-key.action {
+  background: rgba(255,255,255,0.05);
+  color: var(--text-muted);
+}
+
+.onboarding-footer {
+  margin-top: auto;
+  padding: 24px 0 env(safe-area-inset-bottom, 24px);
+  width: 100%;
+}
+
+.btn-primary-full {
+  width: 100%;
+  background: var(--primary-gradient);
+  color: white;
+  padding: 16px;
+  border-radius: 16px;
+  border: none;
+  font-weight: 800;
+  font-size: 1rem;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(14, 192, 223, 0.3);
+  transition: all 0.2s;
+}
+
+.btn-primary-full:active {
+  transform: scale(0.98);
+}
+
+.btn-primary-full:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-ghost-sm {
+  background: transparent;
+  color: var(--primary);
+  border: none;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}

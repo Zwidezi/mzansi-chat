@@ -6,8 +6,14 @@ import App from './App.jsx'
 // Initialize OneSignal for Push Notifications (SINGLE init point — v3 API)
 import OneSignal from 'react-onesignal';
 
-OneSignal.init({
-  appId: "e15416de-5735-4b28-8b25-7c2f5a3c39cf",
+const onesignalAppId = import.meta.env.VITE_ONESIGNAL_APP_ID;
+
+if (!onesignalAppId) {
+  console.warn('OneSignal App ID not set (VITE_ONESIGNAL_APP_ID). Push notifications disabled.');
+}
+
+onesignalAppId && OneSignal.init({
+  appId: onesignalAppId,
   allowLocalhostAsSecureOrigin: true,
   autoResubscribe: true,
   serviceWorkerParam: { scope: '/' },

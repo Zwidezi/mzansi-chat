@@ -1,122 +1,291 @@
-import { useState, useEffect, useRef, createContext, useContext } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import Peer from 'peerjs';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabaseClient';
 
 const CallContext = createContext();
 
-export const CallProvider = ({ children, userHandle }) => {
+export const CallProvider = ({ children }) => {
+  const { currentUser } = useAuth();
+  const userHandle = currentUser?.handle;
   const [peerId, setPeerId] = useState(null);
-  const [call, setCall] = useState(null);
+  const [callState, setCallState] = useState('idle'); // idle | ringing | calling | connected
+  const [callType, setCallType] = useState('voice'); // voice | video
+  const [remoteHandle, setRemoteHandle] = useState(null);
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
-  const [isCalling, setIsCalling] = useState(false);
-  const [incomingCall, setIncomingCall] = useState(null);
+  const [callDuration, setCallDuration] = useState(0);
   
   const peerRef = useRef(null);
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
+  const activeCallRef = useRef(null);
+  const timerRef = useRef(null);
+  const channelRef = useRef(null);
 
+  // Initialize PeerJS when user logs in
   useEffect(() => {
     if (!userHandle) return;
 
-    // Initialize Peer with user handle as the ID
     const peer = new Peer(`mzansi-${userHandle}`, {
-      debug: 2
+      debug: 0,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+        ]
+      }
     });
 
     peer.on('open', (id) => {
-      console.log('PeerJS connected with ID:', id);
+      console.log('[Call] PeerJS connected:', id);
       setPeerId(id);
     });
 
-    // Handle incoming calls
+    // Handle incoming PeerJS media call
     peer.on('call', (incoming) => {
-      console.log('Incoming call from:', incoming.peer);
-      setIncomingCall(incoming);
+      console.log('[Call] Incoming PeerJS call from:', incoming.peer);
+      // Extract caller handle from peer ID
+      const callerHandle = incoming.peer.replace('mzansi-', '');
+      // Determine call type from metadata
+      const isVideo = incoming.metadata?.video ?? true;
+      
+      setRemoteHandle(callerHandle);
+      setCallType(isVideo ? 'video' : 'voice');
+      setCallState('ringing');
+      activeCallRef.current = incoming;
+
+      incoming.on('close', () => {
+        console.log('[Call] Incoming call closed');
+        cleanup();
+      });
     });
 
     peer.on('error', (err) => {
-      console.error('PeerJS Error:', err);
+      console.error('[Call] PeerJS Error:', err);
+      if (err.type === 'peer-unavailable') {
+        cleanup();
+      }
+    });
+
+    peer.on('disconnected', () => {
+      console.log('[Call] PeerJS disconnected, reconnecting...');
+      if (!peer.destroyed) peer.reconnect();
     });
 
     peerRef.current = peer;
 
+    // Listen for call signals via Supabase Realtime
+    const channel = supabase
+      .channel(`call-signal-${userHandle}`)
+      .on('broadcast', { event: 'call-ring' }, (payload) => {
+        console.log('[Call] Received call signal:', payload);
+        // The actual call comes via PeerJS, this is just notification
+      })
+      .on('broadcast', { event: 'call-end' }, () => {
+        console.log('[Call] Remote ended call');
+        cleanup();
+      })
+      .subscribe();
+
+    channelRef.current = channel;
+
     return () => {
       peer.destroy();
+      channel.unsubscribe();
     };
   }, [userHandle]);
 
-  const startLocalStream = async (video = true) => {
+  // Call duration timer
+  useEffect(() => {
+    if (callState === 'connected') {
+      setCallDuration(0);
+      timerRef.current = setInterval(() => {
+        setCallDuration(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [callState]);
+
+  const cleanup = useCallback(() => {
+    if (activeCallRef.current) {
+      activeCallRef.current.close();
+      activeCallRef.current = null;
+    }
+    if (localStream) {
+      localStream.getTracks().forEach(track => track.stop());
+    }
+    setLocalStream(null);
+    setRemoteStream(null);
+    setCallState('idle');
+    setRemoteHandle(null);
+    setCallDuration(0);
+  }, [localStream]);
+
+  const getMedia = async (video = true) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: video,
+        video: video ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } : false,
         audio: true
       });
       setLocalStream(stream);
       return stream;
     } catch (err) {
-      console.error('Failed to get local stream', err);
+      console.error('[Call] Media access failed:', err);
+      alert('Camera/microphone access is required for calls. Please allow access and try again.');
       return null;
     }
   };
 
-  const makeCall = async (targetHandle, video = true) => {
-    const stream = await startLocalStream(video);
-    if (!stream) return;
+  const makeCall = useCallback(async (targetHandle, video = true) => {
+    if (!peerRef.current || callState !== 'idle') return;
+
+    setRemoteHandle(targetHandle);
+    setCallType(video ? 'video' : 'voice');
+    setCallState('calling');
+
+    const stream = await getMedia(video);
+    if (!stream) {
+      setCallState('idle');
+      setRemoteHandle(null);
+      return;
+    }
+
+    // Signal the other user via Supabase so they know a call is coming
+    await supabase.channel(`call-signal-${targetHandle}`).send({
+      type: 'broadcast',
+      event: 'call-ring',
+      payload: { from: userHandle, video }
+    });
 
     const targetId = `mzansi-${targetHandle}`;
-    const outgoingCall = peerRef.current.call(targetId, stream);
-    
-    outgoingCall.on('stream', (remote) => {
-      setRemoteStream(remote);
+    const outgoing = peerRef.current.call(targetId, stream, {
+      metadata: { video, from: userHandle }
     });
 
-    outgoingCall.on('close', () => {
-      endCall();
-    });
-
-    setCall(outgoingCall);
-    setIsCalling(true);
-  };
-
-  const answerCall = async () => {
-    if (!incomingCall) return;
-    
-    const stream = await startLocalStream(true); // Default to video for now
-    incomingCall.answer(stream);
-    
-    incomingCall.on('stream', (remote) => {
-      setRemoteStream(remote);
-    });
-
-    setCall(incomingCall);
-    setIncomingCall(null);
-    setIsCalling(true);
-  };
-
-  const endCall = () => {
-    if (call) call.close();
-    if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
+    if (!outgoing) {
+      console.error('[Call] Failed to create outgoing call');
+      stream.getTracks().forEach(t => t.stop());
+      setCallState('idle');
+      setRemoteHandle(null);
+      return;
     }
-    setCall(null);
-    setLocalStream(null);
-    setRemoteStream(null);
-    setIsCalling(false);
-    setIncomingCall(null);
-  };
+
+    outgoing.on('stream', (remote) => {
+      console.log('[Call] Got remote stream');
+      setRemoteStream(remote);
+      setCallState('connected');
+    });
+
+    outgoing.on('close', () => {
+      console.log('[Call] Outgoing call closed');
+      cleanup();
+    });
+
+    outgoing.on('error', (err) => {
+      console.error('[Call] Call error:', err);
+      cleanup();
+    });
+
+    activeCallRef.current = outgoing;
+
+    // Auto-timeout after 30s if no answer
+    setTimeout(() => {
+      if (callState === 'calling') {
+        console.log('[Call] No answer, timing out');
+        endCall();
+      }
+    }, 30000);
+  }, [callState, userHandle, cleanup]);
+
+  const answerCall = useCallback(async () => {
+    if (!activeCallRef.current || callState !== 'ringing') return;
+
+    const isVideo = callType === 'video';
+    const stream = await getMedia(isVideo);
+    if (!stream) return;
+
+    activeCallRef.current.answer(stream);
+
+    activeCallRef.current.on('stream', (remote) => {
+      console.log('[Call] Got remote stream after answering');
+      setRemoteStream(remote);
+      setCallState('connected');
+    });
+
+    activeCallRef.current.on('error', (err) => {
+      console.error('[Call] Answer error:', err);
+      cleanup();
+    });
+  }, [callState, callType, cleanup]);
+
+  const endCall = useCallback(() => {
+    // Notify remote user
+    if (remoteHandle) {
+      supabase.channel(`call-signal-${remoteHandle}`).send({
+        type: 'broadcast',
+        event: 'call-end',
+        payload: { from: userHandle }
+      });
+    }
+    cleanup();
+  }, [remoteHandle, userHandle, cleanup]);
+
+  const rejectCall = useCallback(() => {
+    if (remoteHandle) {
+      supabase.channel(`call-signal-${remoteHandle}`).send({
+        type: 'broadcast',
+        event: 'call-end',
+        payload: { from: userHandle }
+      });
+    }
+    cleanup();
+  }, [remoteHandle, userHandle, cleanup]);
+
+  const toggleMute = useCallback(() => {
+    if (localStream) {
+      const audioTrack = localStream.getAudioTracks()[0];
+      if (audioTrack) {
+        audioTrack.enabled = !audioTrack.enabled;
+        return audioTrack.enabled;
+      }
+    }
+    return true;
+  }, [localStream]);
+
+  const toggleCamera = useCallback(() => {
+    if (localStream) {
+      const videoTrack = localStream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.enabled = !videoTrack.enabled;
+        return videoTrack.enabled;
+      }
+    }
+    return true;
+  }, [localStream]);
 
   return (
     <CallContext.Provider value={{
       peerId,
-      isCalling,
-      incomingCall,
+      callState,
+      callType,
+      remoteHandle,
       localStream,
       remoteStream,
+      callDuration,
       makeCall,
       answerCall,
       endCall,
-      localVideoRef,
-      remoteVideoRef
+      rejectCall,
+      toggleMute,
+      toggleCamera
     }}>
       {children}
     </CallContext.Provider>
