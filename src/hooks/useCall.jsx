@@ -15,6 +15,8 @@ export const CallProvider = ({ children }) => {
   const [localStream, setLocalStream] = useState(null);
   const [remoteStream, setRemoteStream] = useState(null);
   const [callDuration, setCallDuration] = useState(0);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [facingMode, setFacingMode] = useState('user');
   
   const peerRef = useRef(null);
   const activeCallRef = useRef(null);
@@ -127,12 +129,14 @@ export const CallProvider = ({ children }) => {
     setCallState('idle');
     setRemoteHandle(null);
     setCallDuration(0);
+    setIsMinimized(false);
+    setFacingMode('user');
   }, [localStream]);
 
   const getMedia = async (video = true) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: video ? { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } : false,
+        video: video ? { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } } : false,
         audio: true
       });
       setLocalStream(stream);
@@ -271,6 +275,45 @@ export const CallProvider = ({ children }) => {
     return true;
   }, [localStream]);
 
+  const switchCamera = useCallback(async () => {
+    if (callType !== 'video' || !localStream) return;
+    
+    const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(newFacingMode);
+
+    try {
+      const newStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: newFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: true
+      });
+
+      const newVideoTrack = newStream.getVideoTracks()[0];
+      const oldVideoTrack = localStream.getVideoTracks()[0];
+
+      if (activeCallRef.current && activeCallRef.current.peerConnection) {
+        const senders = activeCallRef.current.peerConnection.getSenders();
+        const videoSender = senders.find(s => s.track && s.track.kind === 'video');
+        if (videoSender) {
+          await videoSender.replaceTrack(newVideoTrack);
+        }
+      }
+
+      // Preserve audio track (don't flip audio)
+      const audioTrack = localStream.getAudioTracks()[0];
+      const combinedStream = new MediaStream([newVideoTrack, audioTrack]);
+      
+      oldVideoTrack.stop();
+      setLocalStream(combinedStream);
+      
+    } catch (err) {
+      console.error('[Call] Camera switch failed:', err);
+    }
+  }, [callType, localStream, facingMode]);
+
+  const toggleMinimize = useCallback(() => {
+    setIsMinimized(prev => !prev);
+  }, []);
+
   return (
     <CallContext.Provider value={{
       peerId,
@@ -280,12 +323,16 @@ export const CallProvider = ({ children }) => {
       localStream,
       remoteStream,
       callDuration,
+      isMinimized,
+      facingMode,
       makeCall,
       answerCall,
       endCall,
       rejectCall,
       toggleMute,
-      toggleCamera
+      toggleCamera,
+      switchCamera,
+      toggleMinimize
     }}>
       {children}
     </CallContext.Provider>

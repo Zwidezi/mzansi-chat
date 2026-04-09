@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useCall } from '../../hooks/useCall';
-import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, X } from 'lucide-react';
+import { Phone, PhoneOff, Mic, MicOff, Video, VideoOff, X, RotateCw, Minimize2, Maximize2 } from 'lucide-react';
 
 const formatDuration = (seconds) => {
   const m = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -71,11 +71,16 @@ const IncomingCallModal = ({ remoteHandle, callType, onAnswer, onReject }) => (
 );
 
 // Active call / outgoing ring screen
-const ActiveCallScreen = ({ remoteHandle, callType, callState, callDuration, localStream, remoteStream, onEnd, onToggleMute, onToggleCamera }) => {
+const ActiveCallScreen = ({ 
+  remoteHandle, callType, callState, callDuration, 
+  localStream, remoteStream, onEnd, onToggleMute, 
+  onToggleCamera, onSwitchCamera, onToggleMinimize, isMinimized 
+}) => {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const [muted, setMuted] = useState(false);
   const [cameraOff, setCameraOff] = useState(false);
+  const [isSwapped, setIsSwapped] = useState(false);
 
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
@@ -99,31 +104,59 @@ const ActiveCallScreen = ({ remoteHandle, callType, callState, callDuration, loc
       display: 'flex', flexDirection: 'column',
       animation: 'fadeIn 0.3s ease'
     }}>
-      {/* Remote video (full screen) */}
-      {isVideo && isConnected && remoteStream && (
-        <video
-          ref={remoteVideoRef}
-          autoPlay
-          playsInline
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-        />
-      )}
-
-      {/* Local video (picture-in-picture) */}
-      {isVideo && localStream && (
-        <div style={{
-          position: 'absolute', top: '60px', right: '16px', zIndex: 3,
-          width: '120px', height: '160px', borderRadius: '16px', overflow: 'hidden',
-          border: '2px solid rgba(255,255,255,0.3)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
-        }}>
+      {/* Remote / Main Video */}
+      {isVideo && isConnected && (
+        <div 
+          onClick={() => isConnected && setIsSwapped(!isSwapped)}
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', cursor: 'pointer' }}
+        >
           <video
-            ref={localVideoRef}
+            ref={isSwapped ? localVideoRef : remoteVideoRef}
             autoPlay
             playsInline
-            muted
-            style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }}
+            muted={isSwapped}
+            style={{ 
+              width: '100%', 
+              height: '100%', 
+              objectFit: 'cover', 
+              transform: isSwapped ? 'scaleX(-1)' : 'none' 
+            }}
           />
         </div>
+      )}
+
+      {/* Local / PIP Video */}
+      {isVideo && localStream && isConnected && (
+        <div 
+          onClick={() => setIsSwapped(!isSwapped)}
+          style={{
+            position: 'absolute', top: isMinimized ? '20px' : '80px', right: '16px', zIndex: 10,
+            width: isMinimized ? '80px' : '110px', height: isMinimized ? '110px' : '150px', 
+            borderRadius: '16px', overflow: 'hidden', cursor: 'pointer',
+            border: '2px solid rgba(255,255,255,0.4)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+          }}
+        >
+          <video
+            ref={isSwapped ? remoteVideoRef : localVideoRef}
+            autoPlay
+            playsInline
+            muted={!isSwapped}
+            style={{ 
+              width: '100%', 
+              height: '100%', 
+              objectFit: 'cover',
+              transform: isSwapped ? 'none' : 'scaleX(-1)'
+            }}
+          />
+        </div>
+      )}
+
+      {/* Outgoing Ringing Animation (if not connected) */}
+      {!isConnected && (
+         <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1 }}>
+            <div className="calling-pulse" style={{ width: '200px', height: '200px', border: '2px solid var(--primary)', borderRadius: '50%', animation: 'callPulse 2s infinite' }} />
+         </div>
       )}
 
       {/* Top bar */}
@@ -168,47 +201,57 @@ const ActiveCallScreen = ({ remoteHandle, callType, callState, callDuration, loc
         )}
       </div>
 
-      {/* Bottom controls */}
-      <div style={{
-        position: 'relative', zIndex: 2, padding: '0 24px 60px',
-        display: 'flex', justifyContent: 'center', gap: '24px',
-        marginTop: isVideo && isConnected ? 'auto' : '0'
+      {/* UI Controls Overlay (Hide mostly when minimized) */}
+      <div style={{ 
+        position: 'relative', zIndex: 20, flex: 1, display: 'flex', flexDirection: 'column',
+        background: isMinimized ? 'transparent' : 'linear-gradient(rgba(0,0,0,0.4) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.6) 100%)',
+        transition: 'all 0.3s'
       }}>
-        {/* Mute */}
-        <button onClick={() => { const result = onToggleMute(); setMuted(!muted); }} style={{
-          width: '56px', height: '56px', borderRadius: '50%',
-          background: muted ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)',
-          border: 'none', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          backdropFilter: 'blur(8px)', transition: 'background 0.2s'
-        }}>
-          {muted ? <MicOff size={24} color="white" /> : <Mic size={24} color="white" />}
-        </button>
-
-        {/* Camera toggle (video calls only) */}
-        {isVideo && (
-          <button onClick={() => { onToggleCamera(); setCameraOff(!cameraOff); }} style={{
-            width: '56px', height: '56px', borderRadius: '50%',
-            background: cameraOff ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)',
-            border: 'none', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backdropFilter: 'blur(8px)', transition: 'background 0.2s'
-          }}>
-            {cameraOff ? <VideoOff size={24} color="white" /> : <Video size={24} color="white" />}
+        {/* Top bar */}
+        <div style={{ padding: '60px 24px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: '900', color: 'white' }}>@{remoteHandle}</h2>
+            <p style={{ color: isConnected ? '#22c55e' : 'rgba(255,255,255,0.6)', fontSize: '0.9rem', fontWeight: '700' }}>
+               {isConnected ? formatDuration(callDuration) : 'Calling...'}
+            </p>
+          </div>
+          <button onClick={onToggleMinimize} style={{ background: 'rgba(0,0,0,0.3)', border: 'none', borderRadius: '50%', padding: '12px', color: 'white', backdropFilter: 'blur(8px)' }}>
+            {isMinimized ? <Maximize2 size={24} /> : <Minimize2 size={24} />}
           </button>
+        </div>
+
+        {/* Center UI (Only when not connected or voice) */}
+        {!isConnected && (
+           <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: 'var(--primary-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.5rem', fontWeight: '900', color: 'white' }}>
+                 {remoteHandle?.[0]?.toUpperCase()}
+              </div>
+           </div>
         )}
 
-        {/* End call */}
-        <button onClick={onEnd} style={{
-          width: '56px', height: '56px', borderRadius: '50%',
-          background: '#ef4444', border: 'none', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          boxShadow: '0 4px 20px rgba(239,68,68,0.4)',
-          transition: 'transform 0.15s'
-        }} onMouseDown={e => e.currentTarget.style.transform = 'scale(0.9)'}
-           onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}>
-          <PhoneOff size={24} color="white" />
-        </button>
+        {/* Bottom controls */}
+        {!isMinimized && (
+          <div style={{ padding: '0 24px 60px', display: 'flex', justifyContent: 'center', gap: '20px', marginTop: 'auto' }}>
+            <button onClick={() => { setMuted(onToggleMute()); }} style={{ width: '56px', height: '56px', borderRadius: '50%', background: muted ? '#f43f5e' : 'rgba(255,255,255,0.15)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' }}>
+              {muted ? <MicOff size={24} color="white" /> : <Mic size={24} color="white" />}
+            </button>
+            
+            {isVideo && (
+               <>
+                 <button onClick={() => { setCameraOff(onToggleCamera()); }} style={{ width: '56px', height: '56px', borderRadius: '50%', background: cameraOff ? '#f43f5e' : 'rgba(255,255,255,0.15)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' }}>
+                   {cameraOff ? <VideoOff size={24} color="white" /> : <Video size={24} color="white" />}
+                 </button>
+                 <button onClick={onSwitchCamera} style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'rgba(255,255,255,0.15)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)' }}>
+                   <RotateCw size={24} color="white" />
+                 </button>
+               </>
+            )}
+
+            <button onClick={onEnd} style={{ width: '64px', height: '64px', borderRadius: '50%', background: '#ef4444', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 32px rgba(239,68,68,0.4)' }}>
+              <PhoneOff size={28} color="white" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -245,9 +288,12 @@ const CallOverlay = () => {
       callDuration={callDuration}
       localStream={localStream}
       remoteStream={remoteStream}
+      isMinimized={isMinimized}
       onEnd={endCall}
       onToggleMute={toggleMute}
       onToggleCamera={toggleCamera}
+      onSwitchCamera={switchCamera}
+      onToggleMinimize={toggleMinimize}
     />
   );
 };
