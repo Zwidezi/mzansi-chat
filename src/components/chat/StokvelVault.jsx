@@ -1,13 +1,37 @@
-import { useState, useEffect } from 'react';
-import { Database, TrendingUp, Users, ArrowUpRight } from 'lucide-react';
+import { useState } from 'react';
+import { Database, TrendingUp, Users, ArrowUpRight, CreditCard } from 'lucide-react';
 import { PaystackButton } from 'react-paystack';
 
 const StokvelVault = ({ messages, t, onContribute }) => {
   const contributions = messages.filter(m => m.type === 'contribution');
-  const total = contributions.reduce((acc, m) => acc + (parseFloat(m.amount) || 0), 0);
+  const total = contributions.reduce((acc, m) => acc + (parseFloat(m.metadata?.amount) || 0), 0);
   const uniqueMembers = new Set(contributions.map(m => m.sender_handle)).size;
 
-  const [payAmount, setPayAmount] = useState("100.00");
+  const [payAmount, setPayAmount] = useState("100");
+  const [showPayment, setShowPayment] = useState(false);
+
+  const publicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
+
+  const handlePaymentSuccess = (reference) => {
+    onContribute(payAmount);
+    setShowPayment(false);
+    setPayAmount("100");
+  };
+
+  const componentProps = publicKey ? {
+    email: 'user@mzansichat.com',
+    amount: parseFloat(payAmount) * 100,
+    publicKey,
+    currency: 'ZAR',
+    channels: ['card', 'mobile_money'],
+    onSuccess: handlePaymentSuccess,
+    onClose: () => setShowPayment(false),
+    metadata: {
+      custom_fields: [
+        { display_name: "Stokvel Contribution", variable_name: "stokvel", value: "community_vault" }
+      ]
+    }
+  } : {};
 
   return (
     <div className="stokvel-vault-container" style={{ marginBottom: '24px' }}>
@@ -39,13 +63,65 @@ const StokvelVault = ({ messages, t, onContribute }) => {
           />
           <button 
            className="btn-primary" 
-           style={{ flex: 1, background: 'white', color: '#059669', fontWidth: '800', borderRadius: '12px' }}
-           onClick={() => onContribute(payAmount)}
+           style={{ flex: 1, background: 'white', color: '#059669', fontWeight: '800', borderRadius: '12px' }}
+           onClick={() => setShowPayment(true)}
           >
-            Contribute R{payAmount}
+            {publicKey ? 'Pay with Paystack' : 'Demo Contribute'}
           </button>
         </div>
+        {!publicKey && (
+          <p style={{ fontSize: '0.65rem', opacity: 0.7, marginTop: '8px', textAlign: 'center' }}>
+            Add VITE_PAYSTACK_PUBLIC_KEY in .env for real payments
+          </p>
+        )}
       </div>
+
+      {showPayment && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }} onClick={() => setShowPayment(false)}>
+          <div style={{
+            background: 'var(--surface)', borderRadius: '16px', padding: '24px',
+            width: '90%', maxWidth: '350px'
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+              <CreditCard size={24} color="var(--primary)" />
+              <h3 style={{ fontWeight: '800' }}>Pay R{payAmount}</h3>
+            </div>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '20px' }}>
+              Secure payment via Paystack (Card or Mobile Money)
+            </p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button onClick={() => setShowPayment(false)} style={{
+                flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid var(--border)',
+                background: 'transparent', color: 'white'
+              }}>Cancel</button>
+              {publicKey ? (
+                <PaystackButton 
+                  {...componentProps}
+                  className="paystack-button"
+                  style={{
+                    flex: 1, padding: '12px', borderRadius: '8px', border: 'none',
+                    background: 'var(--primary)', color: 'white', fontWeight: '700',
+                    cursor: 'pointer'
+                  }}
+                />
+              ) : (
+                <button 
+                  onClick={() => { onContribute(payAmount); setShowPayment(false); }}
+                  style={{
+                    flex: 1, padding: '12px', borderRadius: '8px', border: 'none',
+                    background: 'var(--primary)', color: 'white', fontWeight: '700'
+                  }}
+                >
+                  Demo Mode
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <h4 style={{ fontWeight: '800', fontSize: '0.9rem', marginBottom: '12px', color: 'var(--text-secondary)' }}>Recent Activity</h4>
       {contributions.length === 0 ? (
@@ -58,7 +134,7 @@ const StokvelVault = ({ messages, t, onContribute }) => {
              </div>
              <div className="item-content">
                 <span className="item-name" style={{ fontSize: '0.9rem' }}>@{c.sender_handle}</span>
-                <span className="item-preview" style={{ color: 'var(--success)', fontWeight: '700' }}>+ R {c.amount}</span>
+                <span className="item-preview" style={{ color: 'var(--success)', fontWeight: '700' }}>+ R {c.metadata?.amount}</span>
              </div>
              <ArrowUpRight size={14} color="var(--success)" />
           </div>

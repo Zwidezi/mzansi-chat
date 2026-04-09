@@ -71,12 +71,12 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     setAuthError(null);
     try {
-      // Include referral info if present
       const signupData = { ...data, referred_by: referralCode };
-      const { user, error } = await signUpUser(signupData);
-      if (error) throw error;
-      setCurrentUser(user);
-      setPinLocked(true); // Newly signed up users should set a PIN next
+      const res = await signUpUser(signupData);
+      if (res.error) throw new Error(res.error);
+      
+      setCurrentUser(res.user);
+      setPinLocked(true); 
       return { success: true };
     } catch (err) {
       setAuthError(err.message);
@@ -90,9 +90,18 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     setAuthError(null);
     try {
-      const { user, error } = await signInUser(handle, words);
-      if (error) throw error;
-      setCurrentUser(user);
+      const res = await signInUser(handle, words);
+      if (res.error) {
+        if (res.needsProfile) {
+          // If auth exists but profile is missing, we could redirect to a profile completion step
+          // For now, we'll just show the error but the AuthFlow can use this info
+          setAuthError(res.error);
+          return { success: false, error: res.error, needsProfile: true };
+        }
+        throw new Error(res.error);
+      }
+      
+      setCurrentUser(res.user);
       setPinLocked(true);
       return { success: true };
     } catch (err) {
@@ -108,7 +117,11 @@ export const AuthProvider = ({ children }) => {
     setCurrentUser(null);
     setSession(null);
     setPinLocked(false);
+    // Thoroughly clear local state
     localStorage.removeItem('mzansi_session');
+    localStorage.removeItem('mzansi_pin_hash');
+    localStorage.removeItem('mzansi_webauthn_enrolled');
+    window.location.href = '/'; // Hard redirect to clear any reactive state
   };
 
   const unlockPin = () => setPinLocked(false);

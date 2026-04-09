@@ -25,7 +25,7 @@ const Welcome = ({ onNext, onRestore, t }) => (
 
 const SignInStep = ({ onBack, onSignIn, authError, t }) => {
   const [handle, setHandle] = useState("");
-  const [words, setWords] = useState(["", "", "", "", "", ""]);
+  const [words, setWords] = useState(["", "", ""]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -36,7 +36,7 @@ const SignInStep = ({ onBack, onSignIn, authError, t }) => {
 
   const handleSubmit = async () => {
     if (!handle.trim()) { setError("Enter your @handle"); return; }
-    if (words.some(w => !w)) { setError("Enter all 6 recovery words"); return; }
+    if (words.some(w => !w)) { setError("Enter all 3 recovery words"); return; }
     
     setSubmitting(true);
     setError(null);
@@ -53,7 +53,7 @@ const SignInStep = ({ onBack, onSignIn, authError, t }) => {
         <Key className="header-icon" size={32} color="var(--primary)" style={{ marginBottom: '8px' }} />
         <h2 style={{ fontSize: '1.5rem', fontWeight: '900' }}>Restore Account</h2>
         <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-          Enter your @handle and the 6 recovery words you saved during signup.
+          Enter your @handle and the 3 recovery words you saved during signup.
         </p>
       </div>
 
@@ -153,7 +153,7 @@ const AuthFlow = ({ defaultStep = 'welcome' }) => {
 
   const onRecoveryNext = async (words) => {
     const success = await handleSignUp({ ...signupData, recoveryWords: words });
-    if (success) setStep('biometric');
+    if (success.success) setStep('biometric');
   };
 
   const onBiometricNext = () => setStep('pin_setup');
@@ -175,8 +175,18 @@ const AuthFlow = ({ defaultStep = 'welcome' }) => {
     if (hashed === storedHash) {
        unlockPin();
     } else {
-       alert("Incorrect PIN");
+       setAuthError("Incorrect PIN. Please try again.");
     }
+  };
+
+  const handleSignInWithCheck = async (handle, words) => {
+    const res = await handleSignIn(handle, words);
+    if (res.needsProfile) {
+       // If profile is missing but auth succeeded, we should ideally move to name/pic setup
+       // For now just stay on signin and show the error from back-end
+       setAuthError(res.error);
+    }
+    return res;
   };
 
   // If already logged in but PIN locked
@@ -187,7 +197,20 @@ const AuthFlow = ({ defaultStep = 'welcome' }) => {
   // Auth Steps
   return (
     <div className="auth-flow-container" style={{ height: '100dvh' }}>
-      {step === 'welcome' && <Welcome onNext={() => setStep('signup')} onRestore={() => setStep('signin')} t={t} />}
+      {step === 'welcome' && (
+        <div style={{ position: 'relative' }}>
+          <Welcome onNext={() => setStep('signup')} onRestore={() => setStep('signin')} t={t} />
+          <div style={{
+            position: 'absolute',
+            bottom: '10px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            fontSize: '10px',
+            color: 'var(--text-dim)',
+            opacity: 0.5
+          }}>v3.0.0-3WORDS-ACTIVE</div>
+        </div>
+      )}
       {step === 'signup' && <IdentityStep onNext={onIdentityNext} initialData={signupData} t={t} />}
       {step === 'recovery' && <RecoveryStep onNext={onRecoveryNext} t={t} />}
       {step === 'biometric' && <BiometricStep onNext={onBiometricNext} handle={signupData.handle} t={t} />}

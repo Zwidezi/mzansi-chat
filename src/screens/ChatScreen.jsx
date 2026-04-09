@@ -1,18 +1,64 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { 
   Plus, Send, Mic, XCircle, ImageIcon, Film, Landmark, MapPin, 
   PhoneCall, VideoIcon, Search, MoreVertical, X, CheckCheck,
-  ChevronRight, Users, Users as UsersIcon, Database, Octagon, CheckCircle, Zap
+  ChevronRight, Users, Users as UsersIcon, Database, Octagon, CheckCircle, Zap, Trash2
 } from 'lucide-react';
 import { 
   getMessages, sendMessage, subscribeToMessages, getUser, uploadMedia, deleteMessage 
 } from '../lib/supabaseClient';
+import { getLindiweResponse } from '../lib/geminiService';
 import { useAuth } from '../context/AuthContext';
 import { useCall } from '../hooks/useCall';
 import { VoiceNote, PaymentBubble, VideoBubble } from '../components/chat/ChatComponents';
 import StokvelVault from '../components/chat/StokvelVault';
 import { BANKS } from '../constants/appData';
+
+// Long-press hook for mobile message actions
+const useLongPress = (callback, ms = 500) => {
+  const timerRef = useRef(null);
+  const callbackRef = useRef(callback);
+  callbackRef.current = callback;
+
+  const start = useCallback((e) => {
+    e.preventDefault();
+    timerRef.current = setTimeout(() => callbackRef.current(e), ms);
+  }, [ms]);
+
+  const stop = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
+
+  return {
+    onTouchStart: start,
+    onTouchEnd: stop,
+    onTouchMove: stop,
+    onContextMenu: (e) => { e.preventDefault(); callbackRef.current(e); },
+  };
+};
+
+// Individual message bubble with long-press support
+const MessageBubble = ({ msg, isSelf, onDelete }) => {
+  const longPressHandlers = useLongPress(() => {
+    if (isSelf) onDelete(msg.id);
+  }, 500);
+
+  const handlers = isSelf ? longPressHandlers : {};
+
+  return (
+    <div
+      className={`chat-bubble ${isSelf ? 'self' : 'other'}`}
+      {...handlers}
+      style={{ userSelect: 'none' }}
+    >
+      {msg.content}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+        <CheckCheck size={14} color="var(--text-muted)" />
+      </div>
+    </div>
+  );
+};
 
 const ChatScreen = () => {
   const { id } = useParams();
@@ -31,6 +77,7 @@ const ChatScreen = () => {
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [showBankModal, setShowBankModal] = useState(false);
   const [toast, setToast] = useState(null);
+  const [selectedMessage, setSelectedMessage] = useState(null);
   
   const scrollRef = useRef();
   const fileInputRef = useRef();
@@ -120,13 +167,25 @@ const ChatScreen = () => {
 
   const handleSend = async () => {
     if (!inputText.trim() || !currentUser) return;
+    
+    const userMessage = inputText.trim();
+    setInputText("");
+    
+    if (isAI) {
+      // Persist user's message first so conversations reload correctly
+      await sendMessage(id, currentUser.handle, currentUser.name, userMessage);
+      const aiResponse = await getLindiweResponse(userMessage, messages);
+      await sendMessage(id, 'lindiwe', 'Lindiwe (AI)', aiResponse);
+      return;
+    }
+    
     const { message, error } = await sendMessage(
       id, 
       currentUser.handle, 
       currentUser.name, 
-      inputText.trim()
+      userMessage
     );
-    if (!error) setInputText("");
+    if (error) setInputText(userMessage); // Restore on failure
   };
 
   const handleMediaUpload = async (e) => {
@@ -136,6 +195,15 @@ const ChatScreen = () => {
     if (!error) {
        await sendMessage(id, currentUser.handle, currentUser.name, url, 'image');
     }
+  };
+
+  const handleDeleteMessage = async (msgId) => {
+    const { error } = await deleteMessage(msgId);
+    if (!error) {
+      setMessages(prev => prev.filter(m => m.id !== msgId));
+      showToast('Message deleted');
+    }
+    setSelectedMessage(null);
   };
 
   const canCall = !isGroup && !isAI && (
@@ -188,12 +256,11 @@ const ChatScreen = () => {
                     <div style={{ fontSize: '0.7rem' }}>@{msg.sender_handle} contributed</div>
                   </div>
                 ) : (
-                  <div className={`chat-bubble ${msg.sender_handle === currentUser?.handle ? 'self' : 'other'}`}>
-                    {msg.content}
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
-                        <CheckCheck size={14} color="var(--text-muted)" />
-                    </div>
-                  </div>
+                  <MessageBubble
+                    msg={msg}
+                    isSelf={msg.sender_handle === currentUser?.handle}
+                    onDelete={(id) => setSelectedMessage(id)}
+                  />
                 )}
               </div>
             ))}
@@ -255,6 +322,30 @@ const ChatScreen = () => {
           animation: 'fadeIn 0.2s ease'
         }}>
           {toast}
+        </div>
+      )}
+
+      {selectedMessage && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }} onClick={() => setSelectedMessage(null)}>
+          <div style={{
+            background: 'var(--surface)', borderRadius: '16px', padding: '20px',
+            width: '80%', maxWidth: '300px', textAlign: 'center'
+          }} onClick={e => e.stopPropagation()}>
+            <p style={{ marginBottom: '16px', fontWeight: '600' }}>Delete this message?</p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button onClick={() => setSelectedMessage(null)} style={{
+                padding: '10px 20px', borderRadius: '8px', border: '1px solid var(--border)',
+                background: 'transparent', color: 'white'
+              }}>Cancel</button>
+              <button onClick={() => handleDeleteMessage(selectedMessage)} style={{
+                padding: '10px 20px', borderRadius: '8px', border: 'none',
+                background: '#ef4444', color: 'white', fontWeight: '700'
+              }}>Delete</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

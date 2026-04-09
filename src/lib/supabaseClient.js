@@ -17,7 +17,7 @@ export const bufferToBase64 = (buffer) => {
 
 // ═══════════════════════════════════════
 // Recovery Key System (Expanded)
-// 256-word SA-themed dictionary, 6 words = 256^6 ≈ 281 trillion combos
+// 256-word SA-themed dictionary, 3 words = 256^3 ≈ 16.7 million combos
 // ═══════════════════════════════════════
 
 const WORD_LIST = [
@@ -55,16 +55,26 @@ const WORD_LIST = [
   'thatch','timber','bamboo','reed','sisal','hemp','cotton','linen'
 ];
 
-// Generate 6 random recovery words
+// Generate 3 random recovery words
 export const generateRecoveryKey = () => {
   const words = [];
   const used = new Set();
-  while (words.length < 6) {
-    const idx = Math.floor(Math.random() * WORD_LIST.length);
+  const randomValues = new Uint32Array(3);
+  crypto.getRandomValues(randomValues);
+  let i = 0;
+  while (words.length < 3) {
+    const idx = randomValues[i] % WORD_LIST.length;
     if (!used.has(idx)) {
       used.add(idx);
       words.push(WORD_LIST[idx]);
+    } else {
+      // Regenerate if collision
+      const extra = new Uint32Array(1);
+      crypto.getRandomValues(extra);
+      randomValues[i] = extra[0];
+      continue;
     }
+    i++;
   }
   return words;
 };
@@ -79,65 +89,74 @@ const hashWords = async (words) => {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
-// Synthetic email from handle (used for Supabase Auth)
-const handleToEmail = (handle) => `${handle.toLowerCase()}@mzansichat.app`;
-
 // ═══════════════════════════════════════
-// Supabase Auth Integration
+// Supabase Auth Integration (Anonymous Auth — no email/phone)
 // ═══════════════════════════════════════
 
-// Sign Up — create Supabase Auth user + public profile
+// Sign Up — anonymous auth + public profile
 export const signUpUser = async ({ handle, name, profilePic, recoveryWords, referred_by }) => {
   const recoveryHash = await hashWords(recoveryWords);
-  const email = handleToEmail(handle);
+  const cleanHandle = handle.toLowerCase().trim();
 
-  // 1. Create Supabase Auth user
-  const { data: authData, error: authError } = await supabase.auth.signUp({
-    email,
-    password: recoveryHash,
-  });
+  console.log('[Signup] Attempting with:', { handle: cleanHandle });
+
+  // 1. Check if handle is already taken
+  const { data: existing } = await supabase
+    .from('users')
+    .select('handle')
+    .eq('handle', cleanHandle)
+    .maybeSingle();
+
+  if (existing) {
+    return { error: 'This handle is already taken. Try another one!' };
+  }
+
+  // 2. Create anonymous auth session
+  const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
 
   if (authError) {
-    // Handle duplicate email (handle already taken)
-    if (authError.message?.includes('already registered') || authError.message?.includes('already been registered')) {
-      return { error: 'This handle is already taken. Try another one!' };
-    }
+    console.error('[Signup] Auth error:', authError);
     return { error: authError.message };
   }
 
   const userId = authData.user?.id;
   if (!userId) {
-    return { error: 'Failed to create auth account. Please try again.' };
+    return { error: 'Failed to create account. Please try again.' };
   }
 
-  // 2. Create public profile linked to auth user
-  const { data, error } = await supabase
+  console.log('[Signup] Anonymous user created:', userId);
+
+  // 3. Create public profile linked to auth user
+  const { data, error: profileError } = await supabase
     .from('users')
     .insert([{
-      handle: handle.toLowerCase(),
+      user_id: userId,
+      handle: cleanHandle,
       name,
       profile_pic: profilePic,
       recovery_hash: recoveryHash,
-      user_id: userId,
     }])
     .select()
     .maybeSingle();
 
-  if (error) {
-    // If profile creation fails, the auth user is orphaned — but recoverable on next sign-in
-    if (error.code === '23505') {
-      return { error: 'This handle is already taken. Try another one!' };
+  if (profileError) {
+    console.error('[Signup] Profile error:', profileError);
+    if (profileError.code === '23505') {
+       return { error: 'This handle is already taken.' };
     }
-    return { error: error.message };
+    return { error: `Profile creation failed: ${profileError.message}` };
   }
 
-
-  // 3. Record referral if applicable
+  // 4. Record referral if applicable
   if (referred_by) {
-    await recordReferral(referred_by, handle.toLowerCase());
+    try {
+      await recordReferral(referred_by, cleanHandle);
+    } catch (e) {
+      console.warn('[Signup] Referral tracking failed:', e);
+    }
   }
 
-  return { user: data };
+  return { user: data, session: authData.session };
 };
 
 // Record a referral in the database
@@ -151,41 +170,66 @@ export const recordReferral = async (referrerHandle, refereeHandle) => {
   return { error };
 };
 
-// Sign In — authenticate via recovery words
+// Sign In — verify recovery words, then anonymous auth
 export const signInUser = async (handle, recoveryWords) => {
   const recoveryHash = await hashWords(recoveryWords);
-  const email = handleToEmail(handle);
+  const cleanHandle = handle.toLowerCase().trim();
 
-  // Authenticate with Supabase Auth
-  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-    email,
-    password: recoveryHash,
-  });
+  console.log('[SignIn] Attempting with:', { handle: cleanHandle });
 
-  if (authError) {
-    return { error: 'Invalid handle or recovery key. Double check your words!' };
-  }
-
-  // Fetch user profile
-  const { data: user, error: profileError } = await supabase
+  // 1. Look up user profile and verify recovery hash
+  const { data: user, error: lookupError } = await supabase
     .from('users')
     .select('*')
-    .eq('handle', handle.toLowerCase())
+    .eq('handle', cleanHandle)
     .maybeSingle();
 
-  if (profileError || !user) {
-    return { error: 'Account found but profile is missing. Please contact support.' };
+  if (lookupError) {
+    console.error('[SignIn] Lookup error:', lookupError);
+    return { error: 'Failed to look up account. Please try again.' };
   }
 
-  // If user_id wasn't linked yet (migration edge case), link it now
-  if (!user.user_id && authData.user?.id) {
-    await supabase
-      .from('users')
-      .update({ user_id: authData.user.id })
-      .eq('handle', handle.toLowerCase());
+  if (!user) {
+    return { error: 'No account found with that handle.' };
   }
 
-  return { user };
+  // 2. Verify recovery words match
+  if (user.recovery_hash !== recoveryHash) {
+    return { error: 'Invalid recovery words. Double check your words!' };
+  }
+
+  // 3. Create new anonymous session
+  const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
+
+  if (authError) {
+    console.error('[SignIn] Auth error:', authError);
+    return { error: authError.message };
+  }
+
+  // 4. Re-link user_id to this new anonymous session
+  const newUserId = authData.user?.id;
+  if (!newUserId) {
+    console.error('[SignIn] No user ID from anonymous auth');
+    return { error: 'Failed to create session. Please try again.' };
+  }
+
+  console.log('[SignIn] Linking user_id:', newUserId, 'to handle:', cleanHandle);
+  const { data: updatedUser, error: updateError } = await supabase
+    .from('users')
+    .update({ user_id: newUserId })
+    .eq('handle', cleanHandle)
+    .select()
+    .maybeSingle();
+
+  if (updateError) {
+    console.error('[SignIn] Failed to link user_id:', updateError);
+    // Sign out the orphaned session to avoid dangling auth state
+    await supabase.auth.signOut();
+    return { error: 'Account restoration failed. Please try again.' };
+  }
+
+  // Return the fresh user data (with updated user_id)
+  return { user: updatedUser || user, session: authData.session };
 };
 
 // Sign Out
@@ -451,16 +495,17 @@ export const getRecentDMs = async (userHandle) => {
   
   // Fetch recent messages where this user is a participant in a DM
   // DM chat_ids are formatted as "handle1_handle2" (sorted alphabetically)
+  // Use OR filter with exact prefix/suffix match to avoid LIKE substring false positives
   const { data, error } = await supabase
     .from('messages')
     .select('*')
-    .like('chat_id', `%${handle}%`)
+    .or(`chat_id.like.${handle}_%,chat_id.like.%_${handle}`)
     .order('created_at', { ascending: false })
     .limit(200);
   
   if (error || !data) return [];
   
-  // Filter to only DM conversations (chat_id contains '_' and includes this user's handle)
+  // Filter to only DM conversations (chat_id contains '_' and includes this user's handle as exact part)
   const dmMessages = data.filter(msg => {
     const parts = msg.chat_id.split('_');
     return parts.length === 2 && parts.includes(handle);
@@ -519,19 +564,68 @@ export const getDmChatId = (handle1, handle2) => {
 // Storage (Media Buckets)
 // ═══════════════════════════════════════
 
+// Helper: Client-side image compression for 'Data-Light' savings
+export const compressImage = async (file, maxWidth = 1024, quality = 0.7) => {
+  if (!file || !file.type.startsWith('image/') || file.type === 'image/gif') return file;
+  
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = (maxWidth / width) * height;
+          width = maxWidth;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            resolve(file);
+            return;
+          }
+          const compressedFile = new File([blob], file.name || 'upload.jpg', {
+            type: 'image/jpeg',
+            lastModified: Date.now(),
+          });
+          console.log(`[Data-Light] Compressed: ${(file.size / 1024).toFixed(1)}KB -> ${(compressedFile.size / 1024).toFixed(1)}KB`);
+          resolve(compressedFile);
+        }, 'image/jpeg', quality);
+      };
+    };
+  });
+};
+
 export const uploadMedia = async (file, pathPrefix = 'media') => {
   if (!file) return { error: 'No file provided' };
   
+  // Apply Data-Light compression for images
+  const uploadFile = await compressImage(file);
+  
   // Generate a clean filename: timestamp-random.ext
-  const ext = file.name ? file.name.split('.').pop() : (file.type === 'audio/webm' ? 'webm' : 'bin');
+  // Use .jpg for compressed images
+  const ext = uploadFile.type === 'image/jpeg' ? 'jpg' : (file.name ? file.name.split('.').pop() : 'bin');
   const fileName = `${pathPrefix}/${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${ext}`;
 
   const { data, error } = await supabase.storage
     .from('mzansichat_media')
-    .upload(fileName, file, {
+    .upload(fileName, uploadFile, {
       cacheControl: '3600',
       upsert: false
     });
+
 
   if (error) {
     console.error('Storage Upload Error:', error);

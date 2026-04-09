@@ -21,8 +21,38 @@ CREATE TABLE IF NOT EXISTS public.users (
   is_verified BOOLEAN DEFAULT false,
   is_online BOOLEAN DEFAULT false,
   last_seen TIMESTAMPTZ DEFAULT now(),
-  onesignal_id TEXT
+  onesignal_id TEXT,
+  referral_count INTEGER DEFAULT 0
 );
+
+-- 2.1 REFERRAL REWARD TRIGGER
+CREATE OR REPLACE FUNCTION public.handle_new_referral()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Increment referral count for the referrer
+    UPDATE public.users 
+    SET referral_count = referral_count + 1
+    WHERE handle = NEW.referrer_handle;
+
+    -- Automatically verify if they reach 5 referrals
+    UPDATE public.users
+    SET is_verified = true
+    WHERE handle = NEW.referrer_handle AND referral_count >= 5;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Note: Trigger creation might need to be wrapped in a block if applied multiple times
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'on_new_referral') THEN
+        CREATE TRIGGER on_new_referral
+        AFTER INSERT ON public.referrals
+        FOR EACH ROW EXECUTE FUNCTION public.handle_new_referral();
+    END IF;
+END $$;
+
 
 -- COMMUNITIES
 CREATE TABLE IF NOT EXISTS public.communities (
@@ -157,8 +187,12 @@ CREATE POLICY "Users leave communities" ON public.community_members FOR DELETE U
 CREATE POLICY "Auth read chats" ON public.chats FOR SELECT USING (auth.uid() IS NOT NULL);
 CREATE POLICY "Auth insert chats" ON public.chats FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
 
--- MESSAGES Policies
-CREATE POLICY "Anyone can read messages" ON public.messages FOR SELECT USING (true);
+-- MESSAGES Policies (restricted to conversation participants)
+CREATE POLICY "Users read own conversations" ON public.messages FOR SELECT USING (
+  (chat_id LIKE (public.get_my_handle() || '_%') OR chat_id LIKE ('%_' || public.get_my_handle()))
+  OR EXISTS (SELECT 1 FROM public.community_members WHERE community_id::text = chat_id AND user_handle = public.get_my_handle())
+  OR chat_id = 'lindiwe'
+);
 CREATE POLICY "Users send messages" ON public.messages FOR INSERT WITH CHECK (auth.uid() IS NOT NULL AND sender_handle = public.get_my_handle());
 CREATE POLICY "Users delete own messages" ON public.messages FOR DELETE USING (sender_handle = public.get_my_handle());
 
@@ -166,8 +200,8 @@ CREATE POLICY "Users delete own messages" ON public.messages FOR DELETE USING (s
 CREATE POLICY "Anyone insert referrals" ON public.referrals FOR INSERT WITH CHECK (true);
 CREATE POLICY "Users view own referrals" ON public.referrals FOR SELECT USING (referrer_handle = public.get_my_handle());
 
--- STATUSES Policies
-CREATE POLICY "Anyone read active statuses" ON public.statuses FOR SELECT USING (expires_at > NOW());
+-- STATUSES Policies (require authentication)
+CREATE POLICY "Auth users read active statuses" ON public.statuses FOR SELECT USING (auth.uid() IS NOT NULL AND expires_at > NOW());
 CREATE POLICY "Users insert own status" ON public.statuses FOR INSERT WITH CHECK (auth.uid() IS NOT NULL AND user_handle = public.get_my_handle());
 
 -- 6. SEED DATA (Communities)
