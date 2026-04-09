@@ -43,7 +43,15 @@ const NewChatModal = ({ open, onClose }) => {
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    const searchTerm = query.replace(/@/g, '').toLowerCase();
+    let searchTerm = query.toLowerCase();
+    
+    // If they paste a full invite link, magically extract the handle!
+    if (searchTerm.includes('?ref=')) {
+      searchTerm = searchTerm.split('?ref=')[1].split('&')[0];
+    }
+    
+    // Clean up any trailing spaces or @ symbols from copy/pasting
+    searchTerm = searchTerm.replace(/@/g, '').trim();
 
     if (searchTerm.length < 2) {
       setResults([]);
