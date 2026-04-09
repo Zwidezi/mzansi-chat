@@ -65,7 +65,7 @@ const InviteCenter = ({ t }) => {
         </button>
       </div>
 
-      <h4 style={{ fontWeight: '800', marginBottom: '12px' }}>Your Referrals ({referrals.length})</h4>
+      <h4 style={{ fontWeight: '800', marginBottom: '12px', marginTop: '24px' }}>Friends You've Invited ({referrals.length})</h4>
       
       {loading ? (
         <p style={{ color: 'var(--text-muted)' }}>Loading...</p>

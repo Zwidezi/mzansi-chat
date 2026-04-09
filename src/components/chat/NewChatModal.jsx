@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Search, MessageCircle, UserPlus, Loader2 } from 'lucide-react';
+import { X, Search, MessageCircle, UserPlus, Loader2, Share2, CheckCircle2 } from 'lucide-react';
 import { searchUsers, getDmChatId } from '../../lib/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 
@@ -10,8 +10,25 @@ const NewChatModal = ({ open, onClose }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const inputRef = useRef();
   const debounceRef = useRef();
+
+  const inviteLink = `${window.location.origin}/?ref=${currentUser?.handle}`;
+
+  const shareInvite = () => {
+    if (navigator.share) {
+      navigator.share({
+        title: 'Join MzansiChat!',
+        text: `Hey! Join me on MzansiChat, the first identity-first chat app. No SIM needed! Use my link:`,
+        url: inviteLink,
+      });
+    } else {
+      navigator.clipboard.writeText(inviteLink);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    }
+  };
 
   useEffect(() => {
     if (open && inputRef.current) {
@@ -87,10 +104,19 @@ const NewChatModal = ({ open, onClose }) => {
           )}
 
           {query.length >= 2 && !searching && results.length === 0 && (
-            <div className="new-chat-empty">
-              <Search size={48} color="var(--text-muted)" />
-              <p>No users found for "{query}"</p>
-              <span>Check the handle and try again</span>
+            <div className="new-chat-empty" style={{ textAlign: 'center', padding: '20px 0' }}>
+              <Search size={48} color="var(--text-muted)" style={{ margin: '0 auto 12px' }} />
+              <p style={{ fontWeight: '700' }}>No users found for "{query}"</p>
+              <span style={{ display: 'block', marginBottom: '30px' }}>Double check the handle spelling.</span>
+
+              <div style={{ background: 'var(--surface-light)', padding: '24px 16px', borderRadius: '16px', border: '1px dashed var(--border)' }}>
+                 <p style={{ fontWeight: '800', marginBottom: '8px', color: 'var(--text-primary)' }}>Want to chat with someone new?</p>
+                 <span style={{ display: 'block', marginBottom: '16px', fontSize: '0.8rem' }}>Send them an invite to join MzansiChat!</span>
+                 <button onClick={shareInvite} className="btn-primary-full" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    {copiedLink ? <CheckCircle2 size={18} /> : <Share2 size={18} />}
+                    {copiedLink ? 'Link Copied!' : 'Send an Invite'}
+                 </button>
+              </div>
             </div>
           )}
 

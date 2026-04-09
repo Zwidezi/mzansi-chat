@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { MessageSquarePlus, Users, Search, MessageCircle } from 'lucide-react';
+import { MessageSquarePlus, Users, Search, MessageCircle, Share2, CheckCircle2 } from 'lucide-react';
 import { getJoinedCommunities, getRecentDMs, subscribeToMessages, getDmChatId } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import NewChatModal from '../components/chat/NewChatModal';
@@ -42,6 +42,23 @@ const ChatList = () => {
   const [loading, setLoading] = useState(true);
   const [showNewChat, setShowNewChat] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const inviteLink = `${window.location.origin}/?ref=${currentUser?.handle}`;
+
+  const shareInvite = () => {
+    if (navigator.share) {
+      navigator.share({
+        title: 'Join MzansiChat!',
+        text: `Hey! Join me on MzansiChat, the first identity-first chat app. No SIM needed! Use my link:`,
+        url: inviteLink,
+      });
+    } else {
+      navigator.clipboard.writeText(inviteLink);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    }
+  };
 
   const loadChats = useCallback(async () => {
     if (!currentUser?.handle) return;
@@ -120,9 +137,15 @@ const ChatList = () => {
     <div className="screen-container">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2 style={{ fontSize: '1.5rem', fontWeight: '800' }}>{t.active_convos}</h2>
-        <button className="btn-icon" onClick={() => setShowNewChat(true)}>
-          <MessageSquarePlus size={24} color="var(--primary)" />
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="btn-icon" onClick={shareInvite} style={{ position: 'relative' }}>
+            {copiedLink ? <CheckCircle2 size={24} color="var(--success)" /> : <Share2 size={24} color="var(--text-muted)" />}
+            {copiedLink && <span style={{ position: 'absolute', top: '-25px', left: '50%', transform: 'translateX(-50%)', background: 'var(--success)', color: 'white', padding: '2px 8px', borderRadius: '8px', fontSize: '0.7rem', whiteSpace: 'nowrap' }}>Copied!</span>}
+          </button>
+          <button className="btn-icon" onClick={() => setShowNewChat(true)}>
+            <MessageSquarePlus size={24} color="var(--primary)" />
+          </button>
+        </div>
       </div>
 
       <div className="search-bar" style={{ marginBottom: '20px', background: 'var(--surface-light)', borderRadius: '16px', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px', border: '1px solid var(--border)' }}>
