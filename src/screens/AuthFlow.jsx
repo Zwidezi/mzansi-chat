@@ -124,7 +124,7 @@ const AuthFlow = ({ defaultStep = 'welcome' }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { 
-    currentUser, pinLocked, handleSignUp, handleSignIn, unlockPin, authError, setAuthError, setReferralCode 
+    currentUser, pinLocked, handleSignUp, handleSignIn, handleLogout, unlockPin, authError, setAuthError, setReferralCode 
   } = useAuth();
   
   const [step, setStep] = useState(defaultStep);
@@ -198,7 +198,11 @@ const AuthFlow = ({ defaultStep = 'welcome' }) => {
 
   // If already logged in but PIN locked
   if (currentUser && pinLocked) {
-    return <PinGate handle={currentUser.handle} onLogin={onPinLogin} onReset={() => setStep('welcome')} t={t} authError={authError} />;
+    return <PinGate handle={currentUser.handle} onLogin={onPinLogin} onReset={() => {
+      // Clear the old PIN so user can set a new one after recovery
+      localStorage.removeItem('mzansi_pin_hash');
+      handleLogout(); // Full logout — recovery sign-in will create a fresh session
+    }} t={t} authError={authError} />;
   }
 
   // Auth Steps
