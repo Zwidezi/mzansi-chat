@@ -213,28 +213,30 @@ const ChatScreen = () => {
   return (
     <div className="chat-screen-wrapper" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Search & Vault Toggles UI omitted for brevity of refactor, focus on core architecture */}
-      <header className="chat-header" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
-         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <button onClick={() => navigate(-1)}><X size={20} /></button>
-            <div>
-               <div className="item-name" style={{ fontSize: '1rem' }}>{chatName}</div>
-               <div style={{ fontSize: '0.7rem', color: 'var(--success)' }}>{isAI ? 'Thinking in Ubuntu' : 'online'}</div>
+      <header className="chat-header" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)', background: 'var(--surface)', width: '100%' }}>
+         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            <button onClick={() => navigate(-1)} style={{ flexShrink: 0, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-primary)' }}>
+              <X size={24} />
+            </button>
+            <div style={{ minWidth: 0, overflow: 'hidden', paddingRight: '8px' }}>
+               <div className="item-name" style={{ fontSize: '1.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{chatName}</div>
+               <div style={{ fontSize: '0.75rem', color: 'var(--success)' }}>{isAI ? 'Thinking in Ubuntu' : 'online'}</div>
             </div>
          </div>
-         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+         <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexShrink: 0 }}>
             <Phone 
               size={24} 
-              color={canCall ? '#0ec0df' : '#64748b'} 
-              style={{ cursor: canCall ? 'pointer' : 'not-allowed', opacity: canCall ? 1 : 0.6 }} 
+              color={canCall ? '#0ec0df' : '#f8fafc'} 
+              style={{ cursor: canCall ? 'pointer' : 'not-allowed', opacity: canCall ? 1 : 0.5, transition: 'all 0.2s' }} 
               onClick={handleVoiceCall} 
             />
             <Video 
               size={24} 
-              color={canCall ? '#0ec0df' : '#64748b'} 
-              style={{ cursor: canCall ? 'pointer' : 'not-allowed', opacity: canCall ? 1 : 0.6 }} 
+              color={canCall ? '#0ec0df' : '#f8fafc'} 
+              style={{ cursor: canCall ? 'pointer' : 'not-allowed', opacity: canCall ? 1 : 0.5, transition: 'all 0.2s' }} 
               onClick={handleVideoCall} 
             />
-            {isGroup && <Database size={24} onClick={() => setShowVault(!showVault)} color={showVault ? '#0ec0df' : '#64748b'} style={{ cursor: 'pointer' }} />}
+            {isGroup && <Database size={24} onClick={() => setShowVault(!showVault)} color={showVault ? '#0ec0df' : '#10b981'} style={{ cursor: 'pointer', opacity: 1 }} />}
          </div>
       </header>
 
