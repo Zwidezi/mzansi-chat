@@ -8,6 +8,12 @@ export const IdentityStep = ({ onNext, initialData, t }) => {
   const [handle, setHandle] = useState(initialData.handle || "");
   const [pic, setPic] = useState(initialData.pic || null);
 
+  const handlePicSelect = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setPic(e.target.files[0]);
+    }
+  };
+
   return (
     <div className="screen-container identity-step">
       <div className="onboarding-header">
@@ -16,10 +22,18 @@ export const IdentityStep = ({ onNext, initialData, t }) => {
       </div>
 
       <div className="avatar-section">
-        <div className="avatar-preview">
-          {pic ? <img src={pic} alt="Avatar" /> : <UserCircle2 size={64} color="var(--text-muted)" />}
-        </div>
-        <button className="btn-ghost-sm">{t.change_pic}</button>
+        <label className="avatar-preview" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+          {pic ? (
+             <img src={typeof pic === 'string' ? pic : URL.createObjectURL(pic)} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          ) : (
+             <UserCircle2 size={64} color="var(--text-muted)" />
+          )}
+          <input type="file" style={{ display: 'none' }} accept="image/*" onChange={handlePicSelect} />
+        </label>
+        <label className="btn-ghost-sm" style={{ cursor: 'pointer' }}>
+          {t.change_pic}
+          <input type="file" style={{ display: 'none' }} accept="image/*" onChange={handlePicSelect} />
+        </label>
       </div>
 
       <div className="signup-input-group">

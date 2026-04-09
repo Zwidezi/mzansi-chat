@@ -155,7 +155,7 @@ const AuthFlow = ({ defaultStep = 'welcome' }) => {
   };
 
   const onRecoveryNext = async (words) => {
-    const success = await handleSignUp({ ...signupData, recoveryWords: words });
+    const success = await handleSignUp({ ...signupData, profilePic: signupData.pic, recoveryWords: words });
     if (success.success) {
       setOnboarding(true); // Prevent auto-nav to /chats
       setStep('biometric');

@@ -156,7 +156,8 @@ export const AuthProvider = ({ children }) => {
       handleSignIn,
       handleLogout,
       unlockPin,
-      setAuthError
+      setAuthError,
+      setCurrentUser
     }}>
       {loading ? (
         <div className="auth-loading">

@@ -149,6 +149,22 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
   // 3. Wait for auth lock to settle before profile insert
   await settleAuth(600);
 
+  let finalProfilePicUrl = profilePic;
+  if (profilePic && typeof profilePic === 'object') {
+     try {
+       const { url, error: uploadError } = await uploadMedia(profilePic, 'profiles');
+       if (url) {
+          finalProfilePicUrl = url;
+       } else {
+          console.warn('[Signup] Profile pic upload failed:', uploadError);
+          finalProfilePicUrl = null;
+       }
+     } catch (e) {
+       console.warn('[Signup] Profile pic upload failed:', e);
+       finalProfilePicUrl = null;
+     }
+  }
+
   // 4. Create public profile linked to auth user (with retry for lock contention)
   const profileResult = await retryOp(async () => {
     const { data, error: profileError } = await supabase
@@ -157,7 +173,7 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
         user_id: userId,
         handle: cleanHandle,
         name,
-        profile_pic: profilePic,
+        profile_pic: finalProfilePicUrl,
         recovery_hash: recoveryHash,
       }])
       .select()
