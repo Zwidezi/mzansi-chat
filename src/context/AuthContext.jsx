@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { 
   supabase, restoreSession, signUpUser, signInUser, signOutUser, getUser,
   setOnlineStatus, saveOneSignalId
@@ -27,6 +27,7 @@ export const AuthProvider = ({ children }) => {
   const [pinLocked, setPinLocked] = useState(true);
   const [authError, setAuthError] = useState(null);
   const [referralCode, setReferralCode] = useState(null);
+  const signingUp = useRef(false); // Guard against auth listener racing with signup
 
   useEffect(() => {
     // Initial session restoration
@@ -51,8 +52,12 @@ export const AuthProvider = ({ children }) => {
 
     initAuth();
 
-    // Listen for auth changes
+    // Listen for auth changes — but skip during active signup
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (signingUp.current) {
+        console.log('[Auth] Skipping listener during signup');
+        return;
+      }
       setSession(session);
       if (session) {
         const user = await getUser(null, session.user.id);
@@ -70,6 +75,7 @@ export const AuthProvider = ({ children }) => {
   const handleSignUp = async (data) => {
     setLoading(true);
     setAuthError(null);
+    signingUp.current = true; // Prevent auth listener from racing
     try {
       const signupData = { ...data, referred_by: referralCode };
       const res = await signUpUser(signupData);
@@ -84,6 +90,7 @@ export const AuthProvider = ({ children }) => {
       setAuthError(err.message);
       return { success: false, error: err.message };
     } finally {
+      signingUp.current = false;
       setLoading(false);
     }
   };
