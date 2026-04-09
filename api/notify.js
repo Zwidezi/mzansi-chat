@@ -10,6 +10,23 @@
 
 import { createClient } from '@supabase/supabase-js';
 
+// Rate limiting for webhook endpoint
+const rateLimitMap = new Map();
+const RATE_LIMIT = 60; // max requests per window (webhooks can burst)
+const RATE_WINDOW_MS = 60 * 1000;
+
+const checkRateLimit = (ip) => {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now - entry.windowStart > RATE_WINDOW_MS) {
+    rateLimitMap.set(ip, { windowStart: now, count: 1 });
+    return true;
+  }
+  if (entry.count >= RATE_LIMIT) return false;
+  entry.count++;
+  return true;
+};
+
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
 const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID;
@@ -20,6 +37,12 @@ export default async function handler(req, res) {
   // Only accept POST
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // Rate limiting
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    return res.status(429).json({ error: 'Rate limit exceeded' });
   }
 
   // Fail loudly on missing environment variables

@@ -42,7 +42,13 @@ class ErrorBoundary extends Component {
           <h1 style={{ fontSize: '1.5rem', marginBottom: '16px' }}>Oops! Something went wrong</h1>
           <p style={{ color: '#888', marginBottom: '24px' }}>{this.state.error?.message}</p>
           <button 
-            onClick={() => { localStorage.clear(); window.location.href = '/'; }}
+            onClick={() => {
+              // Only clear session data — preserve PIN hash and WebAuthn enrollment
+              localStorage.removeItem('mzansi_session');
+              localStorage.removeItem('mzansi_ghost_mode');
+              localStorage.removeItem('mzansi_auth_attempts');
+              window.location.href = '/';
+            }}
             style={{
               padding: '12px 24px',
               background: '#6366f1',

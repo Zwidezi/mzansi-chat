@@ -11,6 +11,7 @@ const StokvelVault = ({ messages, t, onContribute }) => {
   const [showPayment, setShowPayment] = useState(false);
 
   const publicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
+  const isTestMode = !publicKey || publicKey.startsWith('pk_test');
 
   const handlePaymentSuccess = (reference) => {
     onContribute(payAmount);
@@ -54,6 +55,15 @@ const StokvelVault = ({ messages, t, onContribute }) => {
            </div>
         </div>
 
+        {isTestMode && (
+          <div style={{ 
+            background: 'rgba(245,158,11,0.2)', border: '1px solid rgba(245,158,11,0.5)',
+            borderRadius: '8px', padding: '8px 12px', marginBottom: '12px',
+            fontSize: '0.7rem', fontWeight: '700', color: '#fbbf24', textAlign: 'center'
+          }}>
+            ⚠️ TEST MODE — No real payments will be processed
+          </div>
+        )}
         <div style={{ display: 'flex', gap: '8px' }}>
           <input 
             type="number" 
@@ -66,14 +76,9 @@ const StokvelVault = ({ messages, t, onContribute }) => {
            style={{ flex: 1, background: 'white', color: '#059669', fontWeight: '800', borderRadius: '12px' }}
            onClick={() => setShowPayment(true)}
           >
-            {publicKey ? 'Pay with Paystack' : 'Demo Contribute'}
+            {isTestMode ? 'Demo Contribute' : 'Pay with Paystack'}
           </button>
         </div>
-        {!publicKey && (
-          <p style={{ fontSize: '0.65rem', opacity: 0.7, marginTop: '8px', textAlign: 'center' }}>
-            Add VITE_PAYSTACK_PUBLIC_KEY in .env for real payments
-          </p>
-        )}
       </div>
 
       {showPayment && (

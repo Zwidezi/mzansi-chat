@@ -219,10 +219,62 @@ export const recordReferral = async (referrerHandle, refereeHandle) => {
   return { error };
 };
 
+// ═══════════════════════════════════════
+// Client-side Rate Limiting
+// ═══════════════════════════════════════
+
+const AUTH_ATTEMPT_KEY = 'mzansi_auth_attempts';
+const MAX_ATTEMPTS = 5;
+const LOCKOUT_MINUTES = 15;
+
+const getAttempts = (handle) => {
+  try {
+    const raw = localStorage.getItem(AUTH_ATTEMPT_KEY);
+    if (!raw) return [];
+    const all = JSON.parse(raw);
+    const cutoff = Date.now() - (LOCKOUT_MINUTES * 60 * 1000);
+    // Return only recent attempts for this handle
+    return (all[handle] || []).filter(ts => ts > cutoff);
+  } catch { return []; }
+};
+
+const recordAttempt = (handle) => {
+  try {
+    const raw = localStorage.getItem(AUTH_ATTEMPT_KEY);
+    const all = raw ? JSON.parse(raw) : {};
+    const cutoff = Date.now() - (LOCKOUT_MINUTES * 60 * 1000);
+    const recent = (all[handle] || []).filter(ts => ts > cutoff);
+    recent.push(Date.now());
+    all[handle] = recent;
+    localStorage.setItem(AUTH_ATTEMPT_KEY, JSON.stringify(all));
+  } catch { /* localStorage full — ignore */ }
+};
+
+const clearAttempts = (handle) => {
+  try {
+    const raw = localStorage.getItem(AUTH_ATTEMPT_KEY);
+    if (!raw) return;
+    const all = JSON.parse(raw);
+    delete all[handle];
+    localStorage.setItem(AUTH_ATTEMPT_KEY, JSON.stringify(all));
+  } catch { /* ignore */ }
+};
+
+const isLockedOut = (handle) => {
+  return getAttempts(handle).length >= MAX_ATTEMPTS;
+};
+
 // Sign In — verify recovery words, then anonymous auth
 export const signInUser = async (handle, recoveryWords) => {
-  const recoveryHash = await hashWords(recoveryWords);
   const cleanHandle = handle.toLowerCase().trim();
+
+  // Rate limit check
+  if (isLockedOut(cleanHandle)) {
+    const mins = LOCKOUT_MINUTES;
+    return { error: `Too many failed attempts. Try again in ${mins} minutes.` };
+  }
+
+  const recoveryHash = await hashWords(recoveryWords);
 
   console.log('[SignIn] Attempting with:', { handle: cleanHandle });
 
@@ -239,13 +291,20 @@ export const signInUser = async (handle, recoveryWords) => {
   }
 
   if (!user) {
+    recordAttempt(cleanHandle);
     return { error: 'No account found with that handle.' };
   }
 
   // 2. Verify recovery words match
   if (user.recovery_hash !== recoveryHash) {
-    return { error: 'Invalid recovery words. Double check your words!' };
+    recordAttempt(cleanHandle);
+    const remaining = MAX_ATTEMPTS - getAttempts(cleanHandle).length;
+    const suffix = remaining > 0 ? ` (${remaining} attempts remaining)` : '';
+    return { error: `Invalid recovery words. Double check your words!${suffix}` };
   }
+
+  // Success — clear attempts
+  clearAttempts(cleanHandle);
 
   // 3. Create new anonymous session
   const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
@@ -411,26 +470,11 @@ export const getCommunities = async () => {
 };
 
 export const joinCommunity = async (communityId, userHandle) => {
-  // Add member
-  const { error } = await supabase
-    .from('community_members')
-    .insert([{ community_id: communityId, user_handle: userHandle }]);
-  
-  if (!error) {
-    // Increment member count
-    const { data: comm } = await supabase
-      .from('communities')
-      .select('member_count')
-      .eq('id', communityId)
-      .single();
-    
-    if (comm) {
-      await supabase
-        .from('communities')
-        .update({ member_count: comm.member_count + 1 })
-        .eq('id', communityId);
-    }
-  }
+  // Use atomic RPC to prevent member_count race conditions
+  const { error } = await supabase.rpc('join_community_atomic', {
+    p_community_id: communityId,
+    p_user_handle: userHandle
+  });
   
   return { error };
 };
@@ -525,6 +569,12 @@ export const subscribeToMessages = (callback) => {
 export const searchUsers = async (query, currentHandle) => {
   if (!query || query.length < 2) return [];
   
+  console.log('[Search] Searching for:', query, '| Current user:', currentHandle);
+  
+  // Check auth state first
+  const { data: { session } } = await supabase.auth.getSession();
+  console.log('[Search] Auth state:', session ? `Authenticated (${session.user?.id?.slice(0,8)}...)` : 'NOT AUTHENTICATED');
+  
   const { data, error } = await supabase
     .from('users')
     .select('handle, name, profile_pic, is_online, last_seen')
@@ -532,8 +582,13 @@ export const searchUsers = async (query, currentHandle) => {
     .neq('handle', currentHandle?.toLowerCase() || '')
     .limit(10);
   
-  if (error) return [];
-  return data;
+  if (error) {
+    console.error('[Search] ERROR:', error.message, error.code, error.details, error.hint);
+    return [];
+  }
+  
+  console.log('[Search] Results:', data?.length || 0, 'users found', data);
+  return data || [];
 };
 
 // Get recent DM conversations for the current user
@@ -692,23 +747,56 @@ export const uploadMedia = async (file, pathPrefix = 'media') => {
 // Statuses (Stories)
 // ═══════════════════════════════════════
 
-export const uploadStatusFile = async (userHandle, file) => {
-  if (!userHandle || !file) return { error: 'Missing handle or file' };
+export const uploadStatusFile = async (userHandle, file, options = {}) => {
+  if (!userHandle) return { error: 'Missing handle' };
   
-  // 1. Upload to bucket
-  const { url, error: uploadError } = await uploadMedia(file, 'statuses');
-  if (uploadError) return { error: uploadError };
-
-  // 2. Identify type (heuristic for video or image)
-  const isVideo = file.type?.startsWith('video/') || false;
+  const { caption, audioFile, bgColor } = options;
+  
+  let mediaUrl = null;
+  let mediaType = 'text'; // Default for text-only statuses
+  
+  // 1. Upload media file if provided
+  if (file) {
+    const { url, error: uploadError } = await uploadMedia(file, 'statuses');
+    if (uploadError) return { error: uploadError };
+    mediaUrl = url;
+    mediaType = file.type?.startsWith('video/') ? 'video' : 'image';
+  }
+  
+  // 2. Upload audio file if provided
+  let audioUrl = null;
+  if (audioFile) {
+    const ext = audioFile.name?.split('.').pop() || 'mp3';
+    const audioFileName = `statuses/audio/${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${ext}`;
+    
+    const { data: audioData, error: audioUploadError } = await supabase.storage
+      .from('mzansichat_media')
+      .upload(audioFileName, audioFile, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: audioFile.type || 'audio/mpeg'
+      });
+    
+    if (!audioUploadError) {
+      const { data: audioPublic } = supabase.storage
+        .from('mzansichat_media')
+        .getPublicUrl(audioFileName);
+      audioUrl = audioPublic.publicUrl;
+    } else {
+      console.warn('[Status] Audio upload failed:', audioUploadError);
+    }
+  }
 
   // 3. Save to database
   const { data, error } = await supabase
     .from('statuses')
     .insert([{
       user_handle: userHandle.toLowerCase(),
-      media_url: url,
-      media_type: isVideo ? 'video' : 'image'
+      media_url: mediaUrl,
+      media_type: mediaType,
+      caption: caption || null,
+      audio_url: audioUrl,
+      bg_color: bgColor || 'gradient-1'
     }])
     .select()
     .single();
