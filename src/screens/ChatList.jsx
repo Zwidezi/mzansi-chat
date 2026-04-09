@@ -102,10 +102,10 @@ const ChatList = () => {
     isAI: true,
   };
 
-  // Filter by search
+  const cleanSearchQuery = searchQuery.toLowerCase().replace(/@/g, '');
   const filteredDMs = searchQuery
     ? dmConversations.filter(dm =>
-        dm.otherHandle?.includes(searchQuery.toLowerCase()) ||
+        dm.otherHandle?.toLowerCase().includes(cleanSearchQuery) ||
         dm.otherName?.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : dmConversations;

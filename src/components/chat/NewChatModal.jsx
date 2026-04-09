@@ -26,7 +26,9 @@ const NewChatModal = ({ open, onClose }) => {
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    if (query.length < 2) {
+    const searchTerm = query.replace(/@/g, '').toLowerCase();
+
+    if (searchTerm.length < 2) {
       setResults([]);
       setSearching(false);
       return;
@@ -34,7 +36,7 @@ const NewChatModal = ({ open, onClose }) => {
 
     setSearching(true);
     debounceRef.current = setTimeout(async () => {
-      const users = await searchUsers(query, currentUser?.handle);
+      const users = await searchUsers(searchTerm, currentUser?.handle);
       setResults(users);
       setSearching(false);
     }, 300);
@@ -67,7 +69,7 @@ const NewChatModal = ({ open, onClose }) => {
             ref={inputRef}
             type="text"
             value={query}
-            onChange={e => setQuery(e.target.value.toLowerCase())}
+            onChange={e => setQuery(e.target.value)}
             placeholder="Search by @handle..."
             autoComplete="off"
             autoCapitalize="none"
