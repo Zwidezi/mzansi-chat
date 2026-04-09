@@ -11,9 +11,6 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    // Disable Navigator Lock to prevent auth token contention during
-    // anonymous signup (signInAnonymously + profile insert race)
-    lock: { enabled: false },
     persistSession: true,
     autoRefreshToken: true,
   }
