@@ -38,7 +38,7 @@ export const AuthProvider = ({ children }) => {
           const user = await getUser(null, session.user.id);
           setCurrentUser(user);
           if (user?.handle) syncOneSignalId(user.handle);
-          // If we restored a session, we might still be PIN locked 
+          // If we restored a session, check if PIN is enrolled
           const isEnrolled = localStorage.getItem('mzansi_pin_hash');
           setPinLocked(!!isEnrolled);
         }
@@ -76,7 +76,9 @@ export const AuthProvider = ({ children }) => {
       if (res.error) throw new Error(res.error);
       
       setCurrentUser(res.user);
-      setPinLocked(true); 
+      // Don't lock PIN here — the onboarding flow hasn't set a PIN yet.
+      // PinSetupStep will call unlockPin() after saving the PIN hash.
+      setPinLocked(false); 
       return { success: true };
     } catch (err) {
       setAuthError(err.message);

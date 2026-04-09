@@ -124,11 +124,12 @@ const AuthFlow = ({ defaultStep = 'welcome' }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { 
-    currentUser, pinLocked, handleSignUp, handleSignIn, unlockPin, authError, setReferralCode 
+    currentUser, pinLocked, handleSignUp, handleSignIn, unlockPin, authError, setAuthError, setReferralCode 
   } = useAuth();
   
   const [step, setStep] = useState(defaultStep);
   const [signupData, setSignupData] = useState({ name: "", handle: "", pic: null });
+  const [onboarding, setOnboarding] = useState(false);
   const [lang] = useState(localStorage.getItem('mzansi_lang') || 'English');
   const t = TRANSLATIONS[lang] || TRANSLATIONS.English;
 
@@ -141,10 +142,12 @@ const AuthFlow = ({ defaultStep = 'welcome' }) => {
   }, [searchParams, setReferralCode]);
 
   useEffect(() => {
+    // Don't auto-navigate while the user is still going through onboarding steps
+    if (onboarding) return;
     if (currentUser && !pinLocked) {
       navigate('/chats');
     }
-  }, [currentUser, pinLocked, navigate]);
+  }, [currentUser, pinLocked, navigate, onboarding]);
 
   const onIdentityNext = (data) => {
     setSignupData(data);
@@ -153,7 +156,10 @@ const AuthFlow = ({ defaultStep = 'welcome' }) => {
 
   const onRecoveryNext = async (words) => {
     const success = await handleSignUp({ ...signupData, recoveryWords: words });
-    if (success.success) setStep('biometric');
+    if (success.success) {
+      setOnboarding(true); // Prevent auto-nav to /chats
+      setStep('biometric');
+    }
   };
 
   const onBiometricNext = () => setStep('pin_setup');
@@ -161,6 +167,7 @@ const AuthFlow = ({ defaultStep = 'welcome' }) => {
   const onPinSetupFinish = async (pin) => {
     const hashed = await hashPinSecure(pin);
     localStorage.setItem('mzansi_pin_hash', hashed);
+    setOnboarding(false); // Onboarding complete
     unlockPin();
     navigate('/chats');
   };
