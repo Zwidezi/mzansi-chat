@@ -99,7 +99,7 @@ export const BiometricStep = ({ onNext, handle, t }) => {
           },
           pubKeyCredParams: [{ alg: -7, type: "public-key" }, { alg: -257, type: "public-key" }],
           authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
-          timeout: 60000
+          timeout: 15000 // 15s timeout — don't hang forever
         };
 
         const credential = await navigator.credentials.create({ publicKey: publicKeyCredentialCreationOptions });
@@ -112,9 +112,10 @@ export const BiometricStep = ({ onNext, handle, t }) => {
           localStorage.setItem('mzansi_webauthn_enrolled', 'true');
         }
       }
-    } catch (e) { console.warn("WebAuthn failed", e); }
+    } catch (e) { console.warn("WebAuthn failed or skipped", e); }
     
-    setTimeout(() => onNext(), 1000);
+    setScanning(false);
+    onNext();
   };
 
   return (
@@ -129,9 +130,17 @@ export const BiometricStep = ({ onNext, handle, t }) => {
          {scanning && <div className="scanning-text">SECURING...</div>}
       </div>
 
-      <div className="onboarding-footer">
+      <div className="onboarding-footer" style={{ gap: '12px', display: 'flex', flexDirection: 'column' }}>
         <button className="btn-primary-full" onClick={handleEnroll} disabled={scanning}>
           {scanning ? "Processing..." : t.finish}
+        </button>
+        <button 
+          className="btn-ghost-full" 
+          onClick={() => onNext()} 
+          disabled={scanning}
+          style={{ border: '1px solid var(--border)', padding: '14px', borderRadius: '16px', fontWeight: '700', opacity: scanning ? 0.4 : 1 }}
+        >
+          Skip for now
         </button>
       </div>
     </div>
