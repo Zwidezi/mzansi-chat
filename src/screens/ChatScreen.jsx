@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { 
   Plus, Send, Mic, XCircle, ImageIcon, Film, Landmark, MapPin, 
-  PhoneCall, VideoIcon, Search, MoreVertical, X, CheckCheck,
+  Phone, Video, Search, MoreVertical, X, CheckCheck,
   ChevronRight, Users, Users as UsersIcon, Database, Octagon, CheckCircle, Zap, Trash2
 } from 'lucide-react';
 import { 
@@ -221,20 +221,20 @@ const ChatScreen = () => {
                <div style={{ fontSize: '0.7rem', color: 'var(--success)' }}>{isAI ? 'Thinking in Ubuntu' : 'online'}</div>
             </div>
          </div>
-         <div style={{ display: 'flex', gap: '16px' }}>
-            <PhoneCall 
-              size={20} 
-              color={canCall ? 'var(--primary)' : 'var(--text-muted)'} 
-              style={{ cursor: 'pointer', opacity: canCall ? 1 : 0.4 }} 
+         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <Phone 
+              size={24} 
+              color={canCall ? '#0ec0df' : '#64748b'} 
+              style={{ cursor: canCall ? 'pointer' : 'not-allowed', opacity: canCall ? 1 : 0.6 }} 
               onClick={handleVoiceCall} 
             />
-            <VideoIcon 
-              size={20} 
-              color={canCall ? 'var(--primary)' : 'var(--text-muted)'} 
-              style={{ cursor: 'pointer', opacity: canCall ? 1 : 0.4 }} 
+            <Video 
+              size={24} 
+              color={canCall ? '#0ec0df' : '#64748b'} 
+              style={{ cursor: canCall ? 'pointer' : 'not-allowed', opacity: canCall ? 1 : 0.6 }} 
               onClick={handleVideoCall} 
             />
-            {isGroup && <Database size={20} onClick={() => setShowVault(!showVault)} color={showVault ? 'var(--primary)' : 'var(--text-muted)'} />}
+            {isGroup && <Database size={24} onClick={() => setShowVault(!showVault)} color={showVault ? '#0ec0df' : '#64748b'} style={{ cursor: 'pointer' }} />}
          </div>
       </header>
 

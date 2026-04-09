@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { Plus, Users, Ghost, RefreshCw, X } from 'lucide-react';
 import { 
-  getCommunities, joinCommunity, getActiveStatuses, uploadStatusFile 
+  getCommunities, joinCommunity, getActiveStatuses, uploadStatusFile, createCommunity 
 } from '../lib/supabaseClient';
 import { useAuth } from '../context/AuthContext';
 import GoogleAd from '../components/common/GoogleAd';
@@ -72,6 +72,9 @@ const Updates = () => {
   const [groupedStatuses, setGroupedStatuses] = useState({});
   const [loading, setLoading] = useState(true);
   const [viewingUser, setViewingUser] = useState(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newProfile, setNewProfile] = useState({ name: '', description: '', tag: 'active' });
+  const [creating, setCreating] = useState(false);
   const fileInputRef = useRef();
 
   useEffect(() => {
@@ -103,11 +106,22 @@ const Updates = () => {
     navigate(`/chat/${commId}`);
   };
 
+  const handleCreateCommunity = async () => {
+    if (!currentUser || !newProfile.name) return;
+    setCreating(true);
+    const { data } = await createCommunity(newProfile.name, newProfile.description, newProfile.tag, currentUser.handle);
+    setCreating(false);
+    if (data) {
+      setShowCreateModal(false);
+      navigate(`/chat/${data.id}`);
+    }
+  };
+
   return (
     <div className="screen-container">
       <div className="discovery-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2 style={{ fontSize: '1.25rem', fontWeight: '800' }}>{t.updates}</h2>
-        <button className="btn-primary" style={{ padding: '6px 12px', borderRadius: '12px' }}>+ Create</button>
+        <button className="btn-primary" style={{ padding: '6px 12px', borderRadius: '12px' }} onClick={() => setShowCreateModal(true)}>+ Create</button>
       </div>
 
       {/* Statuses Row */}
@@ -157,6 +171,43 @@ const Updates = () => {
           ))
         )}
       </div>
+
+      {showCreateModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }} onClick={() => setShowCreateModal(false)}>
+           <div style={{ background: 'var(--surface)', padding: '24px', borderRadius: '24px', width: '100%', maxWidth: '400px', border: '1px solid var(--border)' }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                 <h2 style={{ fontSize: '1.25rem', fontWeight: '800' }}>Create Community</h2>
+                 <button style={{ background: 'transparent', border: 'none', cursor: 'pointer' }} onClick={() => setShowCreateModal(false)}>
+                   <X size={24} color="var(--text-muted)" />
+                 </button>
+              </div>
+              <div className="input-field" style={{ marginBottom: '16px' }}>
+                 <label style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '8px', display: 'block' }}>Name</label>
+                 <input type="text" value={newProfile.name} onChange={e => setNewProfile({...newProfile, name: e.target.value})} placeholder="e.g. Mzansi Web Devs" style={{ width: '100%', padding: '12px', borderRadius: '12px', background: 'var(--bg-dark)', border: '1px solid var(--border)', color: 'white', fontSize: '1rem', outline: 'none' }} />
+              </div>
+              <div className="input-field" style={{ marginBottom: '16px' }}>
+                 <label style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '8px', display: 'block' }}>Description</label>
+                 <textarea value={newProfile.description} onChange={e => setNewProfile({...newProfile, description: e.target.value})} placeholder="What's this community about?" style={{ width: '100%', padding: '12px', borderRadius: '12px', background: 'var(--bg-dark)', border: '1px solid var(--border)', color: 'white', minHeight: '80px', fontFamily: 'inherit', fontSize: '1rem', resize: 'vertical', outline: 'none' }} />
+              </div>
+              <div className="input-field" style={{ marginBottom: '24px' }}>
+                 <label style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-secondary)', marginBottom: '8px', display: 'block' }}>Tag</label>
+                 <select value={newProfile.tag} onChange={e => setNewProfile({...newProfile, tag: e.target.value})} style={{ width: '100%', padding: '12px', borderRadius: '12px', background: 'var(--bg-dark)', border: '1px solid var(--border)', color: 'white', fontSize: '1rem', outline: 'none' }}>
+                    <option value="active">Active</option>
+                    <option value="verified">Verified</option>
+                    <option value="promoted">Promoted</option>
+                 </select>
+              </div>
+              <button 
+                className="btn-primary-full" 
+                onClick={handleCreateCommunity} 
+                disabled={creating || !newProfile.name.trim()}
+                style={{ opacity: (creating || !newProfile.name.trim()) ? 0.5 : 1, width: '100%', display: 'flex', justifyContent: 'center' }}
+              >
+                {creating ? 'Creating...' : 'Create & Join Group'}
+              </button>
+           </div>
+        </div>
+      )}
     </div>
   );
 };
