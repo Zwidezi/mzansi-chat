@@ -20,28 +20,43 @@ const syncOneSignalId = async (handle) => {
   }
 };
 
+// Helper: getUser with timeout to prevent hanging on orphan sessions
+const getUserSafe = async (handle, userId, timeoutMs = 5000) => {
+  try {
+    const result = await Promise.race([
+      getUser(handle, userId),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('getUser timeout')), timeoutMs))
+    ]);
+    return result;
+  } catch (e) {
+    console.warn('[Auth] getUserSafe failed:', e.message);
+    return null;
+  }
+};
+
 export const AuthProvider = ({ children }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [session, setSession] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [pinLocked, setPinLocked] = useState(true);
+  const [loading, setLoading] = useState(true); // Only for initial session restore
+  const [pinLocked, setPinLocked] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [referralCode, setReferralCode] = useState(null);
-  const signingUp = useRef(false); // Guard against auth listener racing with signup
+  const signingUp = useRef(false);
 
   useEffect(() => {
-    // Initial session restoration
     const initAuth = async () => {
       try {
         const session = await restoreSession();
         if (session) {
           setSession(session);
-          const user = await getUser(null, session.user.id);
-          setCurrentUser(user);
-          if (user?.handle) syncOneSignalId(user.handle);
-          // If we restored a session, check if PIN is enrolled
-          const isEnrolled = localStorage.getItem('mzansi_pin_hash');
-          setPinLocked(!!isEnrolled);
+          const user = await getUserSafe(null, session.user.id);
+          if (user) {
+            setCurrentUser(user);
+            if (user.handle) syncOneSignalId(user.handle);
+            const isEnrolled = localStorage.getItem('mzansi_pin_hash');
+            setPinLocked(!!isEnrolled);
+          }
+          // If user is null, session orphaned — ignore gracefully
         }
       } catch (err) {
         console.error("Auth init error:", err);
@@ -52,7 +67,7 @@ export const AuthProvider = ({ children }) => {
 
     initAuth();
 
-    // Listen for auth changes — but skip during active signup
+    // Listen for auth changes — skip during active signup to prevent race
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (signingUp.current) {
         console.log('[Auth] Skipping listener during signup');
@@ -60,9 +75,11 @@ export const AuthProvider = ({ children }) => {
       }
       setSession(session);
       if (session) {
-        const user = await getUser(null, session.user.id);
-        setCurrentUser(user);
-        if (user?.handle) syncOneSignalId(user.handle);
+        const user = await getUserSafe(null, session.user.id);
+        if (user) {
+          setCurrentUser(user);
+          if (user.handle) syncOneSignalId(user.handle);
+        }
       } else {
         setCurrentUser(null);
         setPinLocked(false);
@@ -73,17 +90,15 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const handleSignUp = async (data) => {
-    setLoading(true);
+    // Don't set loading=true — that hides the entire UI with a spinner
     setAuthError(null);
-    signingUp.current = true; // Prevent auth listener from racing
+    signingUp.current = true;
     try {
       const signupData = { ...data, referred_by: referralCode };
       const res = await signUpUser(signupData);
       if (res.error) throw new Error(res.error);
       
       setCurrentUser(res.user);
-      // Don't lock PIN here — the onboarding flow hasn't set a PIN yet.
-      // PinSetupStep will call unlockPin() after saving the PIN hash.
       setPinLocked(false); 
       return { success: true };
     } catch (err) {
@@ -91,19 +106,15 @@ export const AuthProvider = ({ children }) => {
       return { success: false, error: err.message };
     } finally {
       signingUp.current = false;
-      setLoading(false);
     }
   };
 
   const handleSignIn = async (handle, words) => {
-    setLoading(true);
     setAuthError(null);
     try {
       const res = await signInUser(handle, words);
       if (res.error) {
         if (res.needsProfile) {
-          // If auth exists but profile is missing, we could redirect to a profile completion step
-          // For now, we'll just show the error but the AuthFlow can use this info
           setAuthError(res.error);
           return { success: false, error: res.error, needsProfile: true };
         }
@@ -116,8 +127,6 @@ export const AuthProvider = ({ children }) => {
     } catch (err) {
       setAuthError(err.message);
       return { success: false, error: err.message };
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -126,11 +135,10 @@ export const AuthProvider = ({ children }) => {
     setCurrentUser(null);
     setSession(null);
     setPinLocked(false);
-    // Thoroughly clear local state
     localStorage.removeItem('mzansi_session');
     localStorage.removeItem('mzansi_pin_hash');
     localStorage.removeItem('mzansi_webauthn_enrolled');
-    window.location.href = '/'; // Hard redirect to clear any reactive state
+    window.location.href = '/';
   };
 
   const unlockPin = () => setPinLocked(false);
