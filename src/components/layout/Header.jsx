@@ -16,7 +16,7 @@ const Header = ({ user, t, onLogout, showBack }) => {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-        <button className="btn-icon"><Bell size={20} color="var(--text-muted)" /></button>
+        <button className="btn-icon" onClick={() => alert('Notifications and Mentions are coming in v1.5!')}><Bell size={20} color="var(--text-muted)" /></button>
         <div className="avatar-header" onClick={() => navigate('/profile')}>
           {user?.profile_pic ? (
              <img src={user.profile_pic} alt="Me" />
