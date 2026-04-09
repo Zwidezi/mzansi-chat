@@ -146,26 +146,8 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
 
   console.log('[Signup] Anonymous user created:', userId);
 
-  // 3. Wait for auth lock to settle before profile insert
-  await settleAuth(600);
-
-  let finalProfilePicUrl = profilePic;
-  if (profilePic && typeof profilePic === 'object') {
-     try {
-       const { url, error: uploadError } = await uploadMedia(profilePic, 'profiles');
-       if (url) {
-          finalProfilePicUrl = url;
-       } else {
-          console.warn('[Signup] Profile pic upload failed:', uploadError);
-          finalProfilePicUrl = null;
-       }
-     } catch (e) {
-       console.warn('[Signup] Profile pic upload failed:', e);
-       finalProfilePicUrl = null;
-     }
-  }
-
-  // 4. Create public profile linked to auth user (with retry for lock contention)
+  // 3. Create public profile linked to auth user (with retry for lock contention)
+  // We do this BEFORE upload so that Storage RLS can verify the handle exists
   const profileResult = await retryOp(async () => {
     const { data, error: profileError } = await supabase
       .from('users')
@@ -173,7 +155,7 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
         user_id: userId,
         handle: cleanHandle,
         name,
-        profile_pic: finalProfilePicUrl,
+        profile_pic: null, // Set after upload
         recovery_hash: recoveryHash,
       }])
       .select()
@@ -184,16 +166,33 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
       if (profileError.code === '23505') {
         return { error: 'This handle is already taken.', data: null };
       }
-      return { error: profileError, data: null };
+      return { error: profileError.message || profileError, data: null };
     }
     return { data, error: null };
   });
 
-  if (profileResult.error && typeof profileResult.error === 'string') {
-    return { error: profileResult.error };
-  }
   if (profileResult.error) {
-    return { error: `Profile creation failed: ${profileResult.error.message || profileResult.error}` };
+    return { error: typeof profileResult.error === 'string' ? profileResult.error : `Profile creation failed: ${profileResult.error.message || profileResult.error}` };
+  }
+
+  const user = profileResult.data;
+
+  // 4. Upload Profile Picture (Now that the handle record exists in DB)
+  let finalProfilePicUrl = profilePic;
+  if (profilePic && typeof profilePic === 'object') {
+     try {
+       const { url, error: uploadError } = await uploadMedia(profilePic, 'profiles', cleanHandle);
+       if (url) {
+          finalProfilePicUrl = url;
+          // Update the record with the final URL
+          await supabase.from('users').update({ profile_pic: url }).eq('handle', cleanHandle);
+          user.profile_pic = url;
+       } else {
+          console.warn('[Signup] Profile pic upload failed:', uploadError);
+       }
+     } catch (e) {
+       console.warn('[Signup] Profile pic upload failed:', e);
+     }
   }
 
   // 5. Record referral if applicable
@@ -205,7 +204,7 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
     }
   }
 
-  return { user: profileResult.data, session: authData.session };
+  return { user, session: authData.session };
 };
 
 // Record a referral in the database
@@ -279,6 +278,7 @@ export const signInUser = async (handle, recoveryWords) => {
   console.log('[SignIn] Attempting with:', { handle: cleanHandle });
 
   // 1. Look up user profile and verify recovery hash
+  // NOTE: We query 'users' directly here because we NEED to check recovery_hash
   const { data: user, error: lookupError } = await supabase
     .from('users')
     .select('*')
@@ -290,20 +290,33 @@ export const signInUser = async (handle, recoveryWords) => {
     return { error: 'Failed to look up account. Please try again.' };
   }
 
+  // 2. Database-backed Rate Limit Check
+  const { data: isLocked, error: lockError } = await supabase.rpc('is_handle_locked', { p_handle: cleanHandle });
+  if (lockError) console.warn('[SignIn] Rate limit check failed:', lockError);
+  
+  if (isLocked) {
+    return { error: `Account locked due to too many failed attempts. Try again in 15 minutes.` };
+  }
+
   if (!user) {
-    recordAttempt(cleanHandle);
+    // Log failure in DB
+    await supabase.from('auth_attempts').insert([{ handle: cleanHandle, success: false }]);
+    recordAttempt(cleanHandle); // Keep legacy local limit too for defense in depth
     return { error: 'No account found with that handle.' };
   }
 
-  // 2. Verify recovery words match
+  // 3. Verify recovery words match
   if (user.recovery_hash !== recoveryHash) {
+    // Log failure in DB
+    await supabase.from('auth_attempts').insert([{ handle: cleanHandle, success: false }]);
     recordAttempt(cleanHandle);
     const remaining = MAX_ATTEMPTS - getAttempts(cleanHandle).length;
     const suffix = remaining > 0 ? ` (${remaining} attempts remaining)` : '';
     return { error: `Invalid recovery words. Double check your words!${suffix}` };
   }
 
-  // Success — clear attempts
+  // Success — log and clear attempts
+  await supabase.from('auth_attempts').insert([{ handle: cleanHandle, success: true }]);
   clearAttempts(cleanHandle);
 
   // 3. Create new anonymous session
@@ -358,9 +371,9 @@ export const restoreSession = async () => {
   return session;
 };
 
-// Get user by handle or user_id
+// Get user by handle or user_id (using safe public view)
 export const getUser = async (handle, userId = null) => {
-  let query = supabase.from('users').select('*');
+  let query = supabase.from('users_public').select('*');
   
   if (userId) {
     query = query.eq('user_id', userId);
@@ -576,7 +589,7 @@ export const searchUsers = async (query, currentHandle) => {
   console.log('[Search] Auth state:', session ? `Authenticated (${session.user?.id?.slice(0,8)}...)` : 'NOT AUTHENTICATED');
   
   const { data, error } = await supabase
-    .from('users')
+    .from('users_public')
     .select('handle, name, profile_pic, is_online, last_seen')
     .ilike('handle', `%${query.toLowerCase()}%`)
     .neq('handle', currentHandle?.toLowerCase() || '')
@@ -639,7 +652,7 @@ export const getRecentDMs = async (userHandle) => {
   const handles = dmList.map(dm => dm.otherHandle).filter(Boolean);
   if (handles.length > 0) {
     const { data: profiles } = await supabase
-      .from('users')
+      .from('users_public')
       .select('handle, name, profile_pic, is_online')
       .in('handle', handles);
     
@@ -712,16 +725,17 @@ export const compressImage = async (file, maxWidth = 1024, quality = 0.7) => {
   });
 };
 
-export const uploadMedia = async (file, pathPrefix = 'media') => {
+export const uploadMedia = async (file, pathPrefix = 'media', userHandle = null) => {
   if (!file) return { error: 'No file provided' };
   
   // Apply Data-Light compression for images
   const uploadFile = await compressImage(file);
   
-  // Generate a clean filename: timestamp-random.ext
-  // Use .jpg for compressed images
+  // Storage Hardening: Ensure handle-based folder structure for security policies
+  // Format: [userHandle]/[pathPrefix]/[timestamp]-[random].[ext]
+  const handleSegment = userHandle ? `${userHandle.toLowerCase()}/` : '';
   const ext = uploadFile.type === 'image/jpeg' ? 'jpg' : (file.name ? file.name.split('.').pop() : 'bin');
-  const fileName = `${pathPrefix}/${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${ext}`;
+  const fileName = `${handleSegment}${pathPrefix}/${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${ext}`;
 
   const { data, error } = await supabase.storage
     .from('mzansichat_media')
@@ -757,7 +771,7 @@ export const uploadStatusFile = async (userHandle, file, options = {}) => {
   
   // 1. Upload media file if provided
   if (file) {
-    const { url, error: uploadError } = await uploadMedia(file, 'statuses');
+    const { url, error: uploadError } = await uploadMedia(file, 'statuses', userHandle);
     if (uploadError) return { error: uploadError };
     mediaUrl = url;
     mediaType = file.type?.startsWith('video/') ? 'video' : 'image';
@@ -767,7 +781,7 @@ export const uploadStatusFile = async (userHandle, file, options = {}) => {
   let audioUrl = null;
   if (audioFile) {
     const ext = audioFile.name?.split('.').pop() || 'mp3';
-    const audioFileName = `statuses/audio/${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${ext}`;
+    const audioFileName = `${userHandle.toLowerCase()}/statuses/audio/${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${ext}`;
     
     const { data: audioData, error: audioUploadError } = await supabase.storage
       .from('mzansichat_media')

@@ -191,7 +191,7 @@ const ChatScreen = () => {
   const handleMediaUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const { url, error } = await uploadMedia(file);
+    const { url, error } = await uploadMedia(file, 'media', currentUser.handle);
     if (!error) {
        await sendMessage(id, currentUser.handle, currentUser.name, url, 'image');
     }
@@ -256,6 +256,30 @@ const ChatScreen = () => {
                     <div style={{ fontSize: '0.6rem', opacity: 0.6, textTransform: 'uppercase' }}>Vault Contribution</div>
                     <div className="contribution-amount" style={{ fontSize: '1.5rem', fontWeight: '900', color: 'var(--success)' }}>R {msg.metadata?.amount}</div>
                     <div style={{ fontSize: '0.7rem' }}>@{msg.sender_handle} contributed</div>
+                  </div>
+                ) : msg.type === 'status_action' ? (
+                  <div className="status-reply-bubble" style={{ 
+                    alignSelf: msg.sender_handle === currentUser?.handle ? 'flex-end' : 'flex-start', 
+                    marginLeft: msg.sender_handle === currentUser?.handle ? 'auto' : 0,
+                    background: 'var(--surface-light)', 
+                    padding: '12px', 
+                    borderRadius: '16px', 
+                    maxWidth: '280px',
+                    marginBottom: '12px',
+                    border: '1px solid var(--border)'
+                  }}>
+                    <div style={{ display: 'flex', gap: '10px', marginBottom: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
+                       {msg.metadata?.status_thumb ? (
+                          <img src={msg.metadata.status_thumb} style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover' }} />
+                       ) : (
+                          <div style={{ width: '40px', height: '40px', background: 'var(--bg-dark)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', color: 'var(--text-muted)' }}>TEXT</div>
+                       )}
+                       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', minWidth: 0 }}>
+                          <div style={{ fontWeight: '700', color: 'var(--primary)' }}>{msg.metadata?.action_type === 'reaction' ? 'REACTION' : 'STATUS REPLY'}</div>
+                          <div style={{ fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{msg.metadata?.status_caption || 'Status story'}</div>
+                       </div>
+                    </div>
+                    <div style={{ fontSize: '1rem', fontWeight: msg.metadata?.action_type === 'reaction' ? '800' : '400' }}>{msg.content}</div>
                   </div>
                 ) : (
                   <MessageBubble

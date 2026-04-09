@@ -16,7 +16,7 @@ const Profile = () => {
   const handleProfilePicChange = async (e) => {
     if (e.target.files && e.target.files[0]) {
       setUploading(true);
-      const { url } = await uploadMedia(e.target.files[0], 'profiles');
+      const { url } = await uploadMedia(e.target.files[0], 'profiles', currentUser.handle);
       if (url) {
         await updateUser(currentUser.handle, { profile_pic: url });
         setCurrentUser({ ...currentUser, profile_pic: url });
