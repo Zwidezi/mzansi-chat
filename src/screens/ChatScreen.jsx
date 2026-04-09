@@ -14,6 +14,7 @@ import { useCall } from '../hooks/useCall';
 import { VoiceNote, PaymentBubble, VideoBubble } from '../components/chat/ChatComponents';
 import StokvelVault from '../components/chat/StokvelVault';
 import { BANKS } from '../constants/appData';
+import { PaystackButton } from 'react-paystack';
 
 // Long-press hook for mobile message actions
 const useLongPress = (callback, ms = 500) => {
@@ -78,6 +79,9 @@ const ChatScreen = () => {
   const [showBankModal, setShowBankModal] = useState(false);
   const [toast, setToast] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null);
+  const [selectedBank, setSelectedBank] = useState(null);
+  const [transferAmount, setTransferAmount] = useState("50");
+  const [paymentStep, setPaymentStep] = useState('list'); // 'list' | 'amount'
   
   const scrollRef = useRef();
   const fileInputRef = useRef();
@@ -342,17 +346,90 @@ const ChatScreen = () => {
       </footer>
 
       {showBankModal && (
-        <div className="bank-modal" onClick={() => setShowBankModal(false)}>
-           <div className="bank-grid" onClick={e => e.stopPropagation()}>
-              <h3 style={{ fontWeight: '800', marginBottom: '8px' }}>Mzansi Pay</h3>
-               <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '16px' }}>⚠️ Demo mode — no real transactions</p>
-              {BANKS.map(bank => (
-                <div key={bank.id} className="bank-choice" onClick={() => { setShowBankModal(false); sendMessage(id, currentUser.handle, currentUser.name, `Sent R250.00 via ${bank.name}`, 'payment', { bank, amount: '250.00' }); }}>
-                   <div className="avatar" style={{ backgroundColor: bank.color, color: 'white' }}>{bank.short}</div>
-                   <div className="item-name">{bank.name}</div>
-                   <ChevronRight size={18} style={{ marginLeft: 'auto' }} color="var(--text-muted)" />
+        <div className="bank-modal" onClick={() => { setShowBankModal(false); setPaymentStep('list'); setSelectedBank(null); }}>
+           <div className="bank-grid" onClick={e => e.stopPropagation()} style={{ 
+             maxWidth: '380px', 
+             padding: '28px',
+             background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
+             border: '1px solid rgba(255,255,255,0.1)',
+             boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
+           }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h3 style={{ fontWeight: '900', fontSize: '1.4rem', color: 'white' }}>Mzansi Pay</h3>
+                <button onClick={() => { setShowBankModal(false); setPaymentStep('list'); }} style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)' }}><X size={20} /></button>
+              </div>
+
+              {paymentStep === 'list' ? (
+                <>
+                  <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)', marginBottom: '20px' }}>Choose receiving bank for transfer</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px', maxHeight: '350px', overflowY: 'auto', paddingRight: '4px' }}>
+                    {BANKS.map(bank => (
+                      <div key={bank.id} className="bank-choice" onClick={() => { setSelectedBank(bank); setPaymentStep('amount'); }} style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '16px', transition: 'all 0.2s' }}>
+                         <div className="avatar" style={{ backgroundColor: bank.color, color: 'white', fontWeight: '800' }}>{bank.short}</div>
+                         <div className="item-name" style={{ color: 'white', fontWeight: '600' }}>{bank.name}</div>
+                         <ChevronRight size={18} style={{ marginLeft: 'auto' }} color="rgba(255,255,255,0.3)" />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div style={{ animation: 'fadeIn 0.3s ease' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '12px' }}>
+                     <div className="avatar" style={{ backgroundColor: selectedBank?.color, color: 'white' }}>{selectedBank?.short}</div>
+                     <div>
+                       <div style={{ fontSize: '0.9rem', fontWeight: '700', color: 'white' }}>{selectedBank?.name}</div>
+                       <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)' }}>Instant Transfer</div>
+                     </div>
+                  </div>
+
+                  <div style={{ marginBottom: '24px' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>Amount to Send (ZAR)</label>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', fontSize: '1.5rem', fontWeight: '900', color: 'var(--primary)' }}>R</span>
+                      <input 
+                        type="number" 
+                        value={transferAmount}
+                        onChange={(e) => setTransferAmount(e.target.value)}
+                        style={{ 
+                          width: '100%', padding: '16px 16px 16px 40px', fontSize: '1.8rem', fontWeight: '900', 
+                          background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', 
+                          color: 'white', outline: 'none'
+                        }}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button 
+                      onClick={() => setPaymentStep('list')}
+                      style={{ flex: 1, padding: '14px', borderRadius: '12px', background: 'rgba(255,255,255,0.1)', color: 'white', fontWeight: '700', border: 'none' }}
+                    >Back</button>
+                    
+                    <PaystackButton
+                      email={`${currentUser?.handle || 'user'}@mzansichat.com`}
+                      amount={parseFloat(transferAmount || 0) * 100}
+                      publicKey={import.meta.env.VITE_PAYSTACK_PUBLIC_KEY}
+                      currency="ZAR"
+                      channels={['card', 'mobile_money']}
+                      onSuccess={() => {
+                        sendMessage(id, currentUser.handle, currentUser.name, `Paid R${transferAmount} via ${selectedBank.name}`, 'payment', { bank: selectedBank, amount: transferAmount });
+                        setShowBankModal(false);
+                        setPaymentStep('list');
+                        showToast(`R${transferAmount} Payment Sent!`);
+                      }}
+                      onClose={() => console.log('Payment closed')}
+                      className="btn-primary"
+                      style={{ 
+                        flex: 2, padding: '14px', borderRadius: '12px', background: 'var(--primary-gradient)', color: 'white', 
+                        fontWeight: '800', border: 'none', cursor: 'pointer', boxShadow: '0 8px 25px rgba(96, 165, 250, 0.4)'
+                      }}
+                      text={`Pay R${transferAmount}`}
+                    />
+                  </div>
+                  <p style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '16px' }}>Securely processed by Paystack · Encryption Active</p>
                 </div>
-              ))}
+              )}
            </div>
         </div>
       )}
