@@ -94,9 +94,24 @@ const hashWords = async (words) => {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
-// ═══════════════════════════════════════
-// Supabase Auth Integration (Anonymous Auth — no email/phone)
-// ═══════════════════════════════════════
+// Helper: wait for Supabase auth lock to settle
+const settleAuth = (ms = 500) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Helper: retry an async operation
+const retryOp = async (fn, retries = 3, delay = 500) => {
+  for (let i = 0; i < retries; i++) {
+    const result = await fn();
+    if (!result.error) return result;
+    // Only retry on lock/abort errors
+    if (result.error.message?.includes('Lock') || result.error.message?.includes('AbortError')) {
+      console.warn(`[Retry] Attempt ${i + 1} failed with lock error, retrying in ${delay}ms...`);
+      await settleAuth(delay);
+      continue;
+    }
+    return result; // Non-lock error, don't retry
+  }
+  return { error: 'Signup failed after retries. Please try again.' };
+};
 
 // Sign Up — anonymous auth + public profile
 export const signUpUser = async ({ handle, name, profilePic, recoveryWords, referred_by }) => {
@@ -131,28 +146,41 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
 
   console.log('[Signup] Anonymous user created:', userId);
 
-  // 3. Create public profile linked to auth user
-  const { data, error: profileError } = await supabase
-    .from('users')
-    .insert([{
-      user_id: userId,
-      handle: cleanHandle,
-      name,
-      profile_pic: profilePic,
-      recovery_hash: recoveryHash,
-    }])
-    .select()
-    .maybeSingle();
+  // 3. Wait for auth lock to settle before profile insert
+  await settleAuth(600);
 
-  if (profileError) {
-    console.error('[Signup] Profile error:', profileError);
-    if (profileError.code === '23505') {
-       return { error: 'This handle is already taken.' };
+  // 4. Create public profile linked to auth user (with retry for lock contention)
+  const profileResult = await retryOp(async () => {
+    const { data, error: profileError } = await supabase
+      .from('users')
+      .insert([{
+        user_id: userId,
+        handle: cleanHandle,
+        name,
+        profile_pic: profilePic,
+        recovery_hash: recoveryHash,
+      }])
+      .select()
+      .maybeSingle();
+
+    if (profileError) {
+      console.error('[Signup] Profile error:', profileError);
+      if (profileError.code === '23505') {
+        return { error: 'This handle is already taken.', data: null };
+      }
+      return { error: profileError, data: null };
     }
-    return { error: `Profile creation failed: ${profileError.message}` };
+    return { data, error: null };
+  });
+
+  if (profileResult.error && typeof profileResult.error === 'string') {
+    return { error: profileResult.error };
+  }
+  if (profileResult.error) {
+    return { error: `Profile creation failed: ${profileResult.error.message || profileResult.error}` };
   }
 
-  // 4. Record referral if applicable
+  // 5. Record referral if applicable
   if (referred_by) {
     try {
       await recordReferral(referred_by, cleanHandle);
@@ -161,7 +189,7 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
     }
   }
 
-  return { user: data, session: authData.session };
+  return { user: profileResult.data, session: authData.session };
 };
 
 // Record a referral in the database
