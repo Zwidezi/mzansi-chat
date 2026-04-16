@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { TRANSLATIONS } from '../constants/translations';
-import { 
-  IdentityStep, RecoveryStep, BiometricStep, PinSetupStep 
+import {
+  IdentityStep, RecoveryStep, BiometricStep, PinSetupStep
 } from '../components/auth/AuthScreens';
 import { PinGate } from '../components/auth/PinGate';
 import { MessageCircle, Key } from 'lucide-react';
@@ -15,10 +15,10 @@ const Welcome = ({ onNext, onRestore, t }) => (
     <h1 style={{ fontSize: '2.5rem', fontWeight: '900', marginBottom: '16px' }}>{t.welcome}</h1>
     <p style={{ color: 'var(--text-secondary)', marginBottom: '48px', lineHeight: '1.6', fontSize: '1.1rem' }}>{t.welcome_sub}</p>
     <div className="onboarding-footer" style={{ gap: '16px', display: 'flex', flexDirection: 'column' }}>
-       <button className="btn-primary-full" onClick={onNext}>{t.get_started}</button>
-       <button className="btn-ghost-full" style={{ border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', fontWeight: '700' }} onClick={onRestore}>
-          Already have an account? Sign In
-       </button>
+      <button className="btn-primary-full" onClick={onNext}>{t.get_started}</button>
+      <button className="btn-ghost-full" style={{ border: '1px solid var(--border)', padding: '16px', borderRadius: '16px', fontWeight: '700' }} onClick={onRestore}>
+        Already have an account? Sign In
+      </button>
     </div>
   </div>
 );
@@ -37,7 +37,7 @@ const SignInStep = ({ onBack, onSignIn, authError, t }) => {
   const handleSubmit = async () => {
     if (!handle.trim()) { setError("Enter your @handle"); return; }
     if (words.some(w => !w)) { setError("Enter all 3 recovery words"); return; }
-    
+
     setSubmitting(true);
     setError(null);
     const result = await onSignIn(handle.trim().toLowerCase(), words);
@@ -108,8 +108,8 @@ const SignInStep = ({ onBack, onSignIn, authError, t }) => {
         >
           {submitting ? "Restoring..." : "Restore My Account"}
         </button>
-        <button 
-          className="btn-ghost-full" 
+        <button
+          className="btn-ghost-full"
           onClick={onBack}
           style={{ border: '1px solid var(--border)', padding: '14px', borderRadius: '16px', fontWeight: '700' }}
         >
@@ -123,10 +123,10 @@ const SignInStep = ({ onBack, onSignIn, authError, t }) => {
 const AuthFlow = ({ defaultStep = 'welcome' }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { 
-    currentUser, pinLocked, handleSignUp, handleSignIn, handleLogout, unlockPin, authError, setAuthError, setReferralCode 
+  const {
+    currentUser, pinLocked, handleSignUp, handleSignIn, handleLogout, unlockPin, authError, setAuthError, setReferralCode
   } = useAuth();
-  
+
   const [step, setStep] = useState(defaultStep);
   const [signupData, setSignupData] = useState({ name: "", handle: "", pic: null });
   const [onboarding, setOnboarding] = useState(false);
@@ -154,11 +154,28 @@ const AuthFlow = ({ defaultStep = 'welcome' }) => {
     setStep('recovery');
   };
 
+  const signupSubmittingRef = useRef(false);
+  const [signupSubmitting, setSignupSubmitting] = useState(false);
+  const lastSignupAttempt = useRef(0);
+
   const onRecoveryNext = async (words) => {
-    const success = await handleSignUp({ ...signupData, profilePic: signupData.pic, recoveryWords: words });
-    if (success.success) {
-      setOnboarding(true); // Prevent auto-nav to /chats
-      setStep('biometric');
+    // Use ref for synchronous guard (state is stale in closures during rapid re-renders)
+    if (signupSubmittingRef.current) return;
+    // Debounce: prevent rapid re-submissions within 2 seconds
+    if (Date.now() - lastSignupAttempt.current < 2000) return;
+
+    signupSubmittingRef.current = true;
+    lastSignupAttempt.current = Date.now();
+    setSignupSubmitting(true);
+    try {
+      const success = await handleSignUp({ ...signupData, profilePic: signupData.pic, recoveryWords: words });
+      if (success.success) {
+        setOnboarding(true); // Prevent auto-nav to /chats
+        setStep('biometric');
+      }
+    } finally {
+      signupSubmittingRef.current = false;
+      setSignupSubmitting(false);
     }
   };
 
@@ -175,23 +192,23 @@ const AuthFlow = ({ defaultStep = 'welcome' }) => {
   const onPinLogin = async (pin) => {
     const storedHash = localStorage.getItem('mzansi_pin_hash');
     if (pin === "BIO_SUCCESS") {
-       unlockPin();
-       return;
+      unlockPin();
+      return;
     }
     const hashed = await hashPinSecure(pin);
     if (hashed === storedHash) {
-       unlockPin();
+      unlockPin();
     } else {
-       setAuthError("Incorrect PIN. Please try again.");
+      setAuthError("Incorrect PIN. Please try again.");
     }
   };
 
   const handleSignInWithCheck = async (handle, words) => {
     const res = await handleSignIn(handle, words);
     if (res.needsProfile) {
-       // If profile is missing but auth succeeded, we should ideally move to name/pic setup
-       // For now just stay on signin and show the error from back-end
-       setAuthError(res.error);
+      // If profile is missing but auth succeeded, we should ideally move to name/pic setup
+      // For now just stay on signin and show the error from back-end
+      setAuthError(res.error);
     }
     return res;
   };
@@ -223,16 +240,16 @@ const AuthFlow = ({ defaultStep = 'welcome' }) => {
         </div>
       )}
       {step === 'signup' && <IdentityStep onNext={onIdentityNext} initialData={signupData} t={t} />}
-      {step === 'recovery' && <RecoveryStep onNext={onRecoveryNext} t={t} />}
+      {step === 'recovery' && <RecoveryStep onNext={onRecoveryNext} onBack={() => setStep('signup')} submitting={signupSubmitting} error={authError} t={t} />}
       {step === 'biometric' && <BiometricStep onNext={onBiometricNext} handle={signupData.handle} t={t} />}
       {step === 'pin_setup' && <PinSetupStep onFinish={onPinSetupFinish} t={t} />}
-      
+
       {step === 'signin' && (
-        <SignInStep 
-          onBack={() => setStep('welcome')} 
-          onSignIn={handleSignIn} 
-          authError={authError} 
-          t={t} 
+        <SignInStep
+          onBack={() => setStep('welcome')}
+          onSignIn={handleSignIn}
+          authError={authError}
+          t={t}
         />
       )}
     </div>

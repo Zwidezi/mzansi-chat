@@ -26,38 +26,38 @@ export const bufferToBase64 = (buffer) => {
 // ═══════════════════════════════════════
 
 const WORD_LIST = [
-  'braai','ubuntu','sharp','lekker','jozi','protea','madiba','rooibos',
-  'shisa','nyama','biltong','soweto','durban','cape','mzansi','vuvuzela',
-  'amandla','sawubona','stoep','kraal','dassie','fynbos','jacaranda','tugela',
-  'karoo','rand','tsotsi','indaba','sangoma','marabi','gumboot','mbira',
-  'rainbow','nation','pride','freedom','heritage','mandela','robben','island',
-  'kruger','table','mountain','drakensberg','garden','route','ocean','sunrise',
-  'sunset','harvest','maize','mealie','sorghum','baobab','acacia','impala',
-  'leopard','buffalo','rhino','elephant','lion','cheetah','zebra','giraffe',
-  'springbok','kudu','eland','wildebeest','meerkat','baboon','hornbill','eagle',
-  'kingfisher','weaver','sunbird','flamingo','penguin','ostrich','tortoise','gecko',
-  'puffadder','mamba','cobra','mantis','firefly','cricket','cicada','anthill',
-  'savanna','bushveld','highveld','lowveld','midlands','coastal','plateau','valley',
-  'river','stream','waterfall','lagoon','estuary','reef','dune','canyon',
-  'beacon','signal','bridge','tower','gateway','harbour','jetty','lighthouse',
-  'village','township','suburb','metro','plaza','arcade','market','bazaar',
-  'shebeen','tavern','cafe','bistro','eatery','bakery','butchery','pharmacy',
-  'clinic','school','library','museum','theatre','stadium','arena','court',
-  'temple','mosque','church','chapel','shrine','mission','seminary','convent',
-  'copper','gold','diamond','platinum','chrome','iron','coal','tin',
-  'quartz','marble','granite','slate','sandstone','limestone','clay','ochre',
-  'scarlet','crimson','amber','saffron','emerald','jade','cobalt','azure',
-  'ivory','onyx','bronze','silver','coral','pearl','opal','topaz',
-  'rhythm','melody','harmony','tempo','chorus','verse','anthem','lullaby',
-  'drumbeat','whistle','chant','hymn','ballad','folklore','legend','saga',
-  'journey','voyage','quest','trail','passage','crossing','summit','ascent',
-  'anchor','compass','lantern','banner','shield','crest','crown','sceptre',
-  'unity','justice','honour','courage','wisdom','patience','kindness','respect',
-  'spirit','vision','dream','spark','flame','blaze','glow','radiance',
-  'thunder','lightning','monsoon','cyclone','breeze','tempest','rainbow','horizon',
-  'twilight','midnight','aurora','zenith','eclipse','solstice','crescent','nebula',
-  'granite','basalt','feldspar','mica','obsidian','pumice','agate','jasper',
-  'thatch','timber','bamboo','reed','sisal','hemp','cotton','linen'
+  'braai', 'ubuntu', 'sharp', 'lekker', 'jozi', 'protea', 'madiba', 'rooibos',
+  'shisa', 'nyama', 'biltong', 'soweto', 'durban', 'cape', 'mzansi', 'vuvuzela',
+  'amandla', 'sawubona', 'stoep', 'kraal', 'dassie', 'fynbos', 'jacaranda', 'tugela',
+  'karoo', 'rand', 'tsotsi', 'indaba', 'sangoma', 'marabi', 'gumboot', 'mbira',
+  'rainbow', 'nation', 'pride', 'freedom', 'heritage', 'mandela', 'robben', 'island',
+  'kruger', 'table', 'mountain', 'drakensberg', 'garden', 'route', 'ocean', 'sunrise',
+  'sunset', 'harvest', 'maize', 'mealie', 'sorghum', 'baobab', 'acacia', 'impala',
+  'leopard', 'buffalo', 'rhino', 'elephant', 'lion', 'cheetah', 'zebra', 'giraffe',
+  'springbok', 'kudu', 'eland', 'wildebeest', 'meerkat', 'baboon', 'hornbill', 'eagle',
+  'kingfisher', 'weaver', 'sunbird', 'flamingo', 'penguin', 'ostrich', 'tortoise', 'gecko',
+  'puffadder', 'mamba', 'cobra', 'mantis', 'firefly', 'cricket', 'cicada', 'anthill',
+  'savanna', 'bushveld', 'highveld', 'lowveld', 'midlands', 'coastal', 'plateau', 'valley',
+  'river', 'stream', 'waterfall', 'lagoon', 'estuary', 'reef', 'dune', 'canyon',
+  'beacon', 'signal', 'bridge', 'tower', 'gateway', 'harbour', 'jetty', 'lighthouse',
+  'village', 'township', 'suburb', 'metro', 'plaza', 'arcade', 'market', 'bazaar',
+  'shebeen', 'tavern', 'cafe', 'bistro', 'eatery', 'bakery', 'butchery', 'pharmacy',
+  'clinic', 'school', 'library', 'museum', 'theatre', 'stadium', 'arena', 'court',
+  'temple', 'mosque', 'church', 'chapel', 'shrine', 'mission', 'seminary', 'convent',
+  'copper', 'gold', 'diamond', 'platinum', 'chrome', 'iron', 'coal', 'tin',
+  'quartz', 'marble', 'granite', 'slate', 'sandstone', 'limestone', 'clay', 'ochre',
+  'scarlet', 'crimson', 'amber', 'saffron', 'emerald', 'jade', 'cobalt', 'azure',
+  'ivory', 'onyx', 'bronze', 'silver', 'coral', 'pearl', 'opal', 'topaz',
+  'rhythm', 'melody', 'harmony', 'tempo', 'chorus', 'verse', 'anthem', 'lullaby',
+  'drumbeat', 'whistle', 'chant', 'hymn', 'ballad', 'folklore', 'legend', 'saga',
+  'journey', 'voyage', 'quest', 'trail', 'passage', 'crossing', 'summit', 'ascent',
+  'anchor', 'compass', 'lantern', 'banner', 'shield', 'crest', 'crown', 'sceptre',
+  'unity', 'justice', 'honour', 'courage', 'wisdom', 'patience', 'kindness', 'respect',
+  'spirit', 'vision', 'dream', 'spark', 'flame', 'blaze', 'glow', 'radiance',
+  'thunder', 'lightning', 'monsoon', 'cyclone', 'breeze', 'tempest', 'rainbow', 'horizon',
+  'twilight', 'midnight', 'aurora', 'zenith', 'eclipse', 'solstice', 'crescent', 'nebula',
+  'granite', 'basalt', 'feldspar', 'mica', 'obsidian', 'pumice', 'agate', 'jasper',
+  'thatch', 'timber', 'bamboo', 'reed', 'sisal', 'hemp', 'cotton', 'linen'
 ];
 
 // Generate 3 random recovery words
@@ -120,9 +120,9 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
 
   console.log('[Signup] Attempting with:', { handle: cleanHandle });
 
-  // 1. Check if handle is already taken
+  // 1. Check if handle is already taken (use users_public view to bypass RLS)
   const { data: existing } = await supabase
-    .from('users')
+    .from('users_public')
     .select('handle')
     .eq('handle', cleanHandle)
     .maybeSingle();
@@ -131,22 +131,42 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
     return { error: 'This handle is already taken. Try another one!' };
   }
 
-  // 2. Create anonymous auth session
-  const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
+  // 2. Get or create anonymous auth session
+  // IMPORTANT: We do NOT call signOut() here because it triggers onAuthStateChange
+  // which causes re-renders and infinite loops in the AuthFlow component.
+  // Instead, we reuse any existing session or create a new one.
+  const { data: { session: existingSession } } = await supabase.auth.getSession();
+  let userId, authSession;
 
-  if (authError) {
-    console.error('[Signup] Auth error:', authError);
-    return { error: authError.message };
+  if (existingSession?.user) {
+    // Reuse existing anonymous session — check if this user already has a profile
+    userId = existingSession.user.id;
+    authSession = existingSession;
+    const { data: existingProfile } = await supabase
+      .from('users')
+      .select('handle')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (existingProfile) {
+      return { error: 'You already have an account. Try signing in instead.' };
+    }
+    console.log('[Signup] Reusing existing session:', userId);
+  } else {
+    // No existing session — create a new anonymous one
+    const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
+    if (authError) {
+      console.error('[Signup] Auth error:', authError);
+      return { error: authError.message };
+    }
+    userId = authData.user?.id;
+    authSession = authData.session;
+    if (!userId) {
+      return { error: 'Failed to create account. Please try again.' };
+    }
+    console.log('[Signup] Anonymous user created:', userId);
   }
 
-  const userId = authData.user?.id;
-  if (!userId) {
-    return { error: 'Failed to create account. Please try again.' };
-  }
-
-  console.log('[Signup] Anonymous user created:', userId);
-
-  // 3. Create public profile linked to auth user (with retry for lock contention)
+  // 4. Create public profile linked to auth user (with retry for lock contention)
   // We do this BEFORE upload so that Storage RLS can verify the handle exists
   const profileResult = await retryOp(async () => {
     const { data, error: profileError } = await supabase
@@ -172,6 +192,13 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
   });
 
   if (profileResult.error) {
+    // Clean up the orphaned anonymous session so the next attempt starts fresh.
+    // Without this, the reused session causes a 409 loop on the same handle.
+    console.warn('[Signup] Profile creation failed, cleaning up orphaned session:', profileResult.error);
+    try { await supabase.auth.signOut(); } catch (_) { /* best effort */ }
+    if (typeof profileResult.error === 'string' && profileResult.error.includes('already taken')) {
+      return { error: profileResult.error };
+    }
     return { error: typeof profileResult.error === 'string' ? profileResult.error : `Profile creation failed: ${profileResult.error.message || profileResult.error}` };
   }
 
@@ -180,19 +207,19 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
   // 4. Upload Profile Picture (Now that the handle record exists in DB)
   let finalProfilePicUrl = profilePic;
   if (profilePic && typeof profilePic === 'object') {
-     try {
-       const { url, error: uploadError } = await uploadMedia(profilePic, 'profiles', cleanHandle);
-       if (url) {
-          finalProfilePicUrl = url;
-          // Update the record with the final URL
-          await supabase.from('users').update({ profile_pic: url }).eq('handle', cleanHandle);
-          user.profile_pic = url;
-       } else {
-          console.warn('[Signup] Profile pic upload failed:', uploadError);
-       }
-     } catch (e) {
-       console.warn('[Signup] Profile pic upload failed:', e);
-     }
+    try {
+      const { url, error: uploadError } = await uploadMedia(profilePic, 'profiles', cleanHandle);
+      if (url) {
+        finalProfilePicUrl = url;
+        // Update the record with the final URL
+        await supabase.from('users').update({ profile_pic: url }).eq('handle', cleanHandle);
+        user.profile_pic = url;
+      } else {
+        console.warn('[Signup] Profile pic upload failed:', uploadError);
+      }
+    } catch (e) {
+      console.warn('[Signup] Profile pic upload failed:', e);
+    }
   }
 
   // 5. Record referral if applicable
@@ -204,7 +231,7 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
     }
   }
 
-  return { user, session: authData.session };
+  return { user, session: authSession };
 };
 
 // Record a referral in the database
@@ -293,7 +320,7 @@ export const signInUser = async (handle, recoveryWords) => {
   // 2. Database-backed Rate Limit Check
   const { data: isLocked, error: lockError } = await supabase.rpc('is_handle_locked', { p_handle: cleanHandle });
   if (lockError) console.warn('[SignIn] Rate limit check failed:', lockError);
-  
+
   if (isLocked) {
     return { error: `Account locked due to too many failed attempts. Try again in 15 minutes.` };
   }
@@ -374,7 +401,7 @@ export const restoreSession = async () => {
 // Get user by handle or user_id (using safe public view)
 export const getUser = async (handle, userId = null) => {
   let query = supabase.from('users_public').select('*');
-  
+
   if (userId) {
     query = query.eq('user_id', userId);
   } else if (handle) {
@@ -402,7 +429,7 @@ export const updateUser = async (handle, updates) => {
 export const setOnlineStatus = async (handle, isOnline) => {
   const updates = { is_online: isOnline };
   if (isOnline) updates.last_seen = new Date().toISOString();
-  
+
   await supabase
     .from('users')
     .update(updates)
@@ -455,7 +482,7 @@ export const saveWebAuthnCredential = async (handle, credential) => {
     }])
     .select()
     .single();
-  
+
   return { data, error };
 };
 
@@ -464,7 +491,7 @@ export const getWebAuthnCredentials = async (handle) => {
     .from('webauthn_credentials')
     .select('*')
     .eq('user_handle', handle.toLowerCase());
-    
+
   return { data, error };
 };
 
@@ -477,7 +504,7 @@ export const getCommunities = async () => {
     .from('communities')
     .select('*')
     .order('member_count', { ascending: false });
-  
+
   if (error) return [];
   return data;
 };
@@ -488,7 +515,7 @@ export const joinCommunity = async (communityId, userHandle) => {
     p_community_id: communityId,
     p_user_handle: userHandle
   });
-  
+
   return { error };
 };
 
@@ -498,7 +525,7 @@ export const createCommunity = async (name, description, tag, ownerHandle) => {
     .insert([{ name, description, tag, owner_handle: ownerHandle.toLowerCase(), member_count: 1 }])
     .select()
     .single();
-    
+
   if (data) {
     await joinCommunity(data.id, ownerHandle);
   }
@@ -531,7 +558,7 @@ export const getJoinedCommunities = async (userHandle) => {
       communities (*)
     `)
     .eq('user_handle', userHandle.toLowerCase());
-  
+
   if (error) return [];
   return data.map(item => item.communities);
 };
@@ -553,27 +580,32 @@ export const sendMessage = async (chatId, senderHandle, senderName, content, typ
     }])
     .select()
     .single();
-  
+
   return { message: data, error };
 };
 
-export const getMessages = async (chatId) => {
+export const getMessages = async (chatId, limit = 50, offset = 0) => {
   const { data, error } = await supabase
     .from('messages')
     .select('*')
     .eq('chat_id', chatId)
-    .order('created_at', { ascending: true });
-  
+    .order('created_at', { ascending: true })
+    .range(offset, offset + limit - 1);
+
   if (error) return [];
   return data;
 };
 
-// Subscribe to new messages in real-time
-export const subscribeToMessages = (callback) => {
+// Subscribe to new messages in real-time (per-chat channel to avoid cross-talk)
+export const subscribeToMessages = (chatId, callback) => {
+  const channelName = chatId ? `messages-${chatId}` : 'messages-global';
   return supabase
-    .channel('mzansichat_realtime')
+    .channel(channelName)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
-      callback(payload.new);
+      // Only forward messages for this chat (or all if no chatId filter)
+      if (!chatId || payload.new.chat_id === chatId) {
+        callback(payload.new);
+      }
     })
     .subscribe();
 };
@@ -581,25 +613,25 @@ export const subscribeToMessages = (callback) => {
 // Search users by handle (for starting new DMs)
 export const searchUsers = async (query, currentHandle) => {
   if (!query || query.length < 2) return [];
-  
+
   console.log('[Search] Searching for:', query, '| Current user:', currentHandle);
-  
+
   // Check auth state first
   const { data: { session } } = await supabase.auth.getSession();
-  console.log('[Search] Auth state:', session ? `Authenticated (${session.user?.id?.slice(0,8)}...)` : 'NOT AUTHENTICATED');
-  
+  console.log('[Search] Auth state:', session ? `Authenticated (${session.user?.id?.slice(0, 8)}...)` : 'NOT AUTHENTICATED');
+
   const { data, error } = await supabase
     .from('users_public')
     .select('handle, name, profile_pic, is_online, last_seen')
     .ilike('handle', `%${query.toLowerCase()}%`)
     .neq('handle', currentHandle?.toLowerCase() || '')
     .limit(10);
-  
+
   if (error) {
     console.error('[Search] ERROR:', error.message, error.code, error.details, error.hint);
     return [];
   }
-  
+
   console.log('[Search] Results:', data?.length || 0, 'users found', data);
   return data || [];
 };
@@ -607,9 +639,9 @@ export const searchUsers = async (query, currentHandle) => {
 // Get recent DM conversations for the current user
 export const getRecentDMs = async (userHandle) => {
   if (!userHandle) return [];
-  
+
   const handle = userHandle.toLowerCase();
-  
+
   // Fetch recent messages where this user is a participant in a DM
   // DM chat_ids are formatted as "handle1_handle2" (sorted alphabetically)
   // Use OR filter with exact prefix/suffix match to avoid LIKE substring false positives
@@ -619,15 +651,15 @@ export const getRecentDMs = async (userHandle) => {
     .or(`chat_id.like.${handle}_%,chat_id.like.%_${handle}`)
     .order('created_at', { ascending: false })
     .limit(200);
-  
+
   if (error || !data) return [];
-  
+
   // Filter to only DM conversations (chat_id contains '_' and includes this user's handle as exact part)
   const dmMessages = data.filter(msg => {
     const parts = msg.chat_id.split('_');
     return parts.length === 2 && parts.includes(handle);
   });
-  
+
   // Group by chat_id and get the latest message per conversation
   const conversations = {};
   dmMessages.forEach(msg => {
@@ -642,12 +674,12 @@ export const getRecentDMs = async (userHandle) => {
       };
     }
   });
-  
+
   // Convert to array and sort by most recent
   const dmList = Object.values(conversations).sort(
     (a, b) => new Date(b.lastMessageTime) - new Date(a.lastMessageTime)
   );
-  
+
   // Enrich with user profiles
   const handles = dmList.map(dm => dm.otherHandle).filter(Boolean);
   if (handles.length > 0) {
@@ -655,10 +687,10 @@ export const getRecentDMs = async (userHandle) => {
       .from('users_public')
       .select('handle, name, profile_pic, is_online')
       .in('handle', handles);
-    
+
     const profileMap = {};
     (profiles || []).forEach(p => { profileMap[p.handle] = p; });
-    
+
     dmList.forEach(dm => {
       const profile = profileMap[dm.otherHandle];
       if (profile) {
@@ -668,7 +700,7 @@ export const getRecentDMs = async (userHandle) => {
       }
     });
   }
-  
+
   return dmList;
 };
 
@@ -684,7 +716,7 @@ export const getDmChatId = (handle1, handle2) => {
 // Helper: Client-side image compression for 'Data-Light' savings
 export const compressImage = async (file, maxWidth = 1024, quality = 0.7) => {
   if (!file || !file.type.startsWith('image/') || file.type === 'image/gif') return file;
-  
+
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -727,10 +759,10 @@ export const compressImage = async (file, maxWidth = 1024, quality = 0.7) => {
 
 export const uploadMedia = async (file, pathPrefix = 'media', userHandle = null) => {
   if (!file) return { error: 'No file provided' };
-  
+
   // Apply Data-Light compression for images
   const uploadFile = await compressImage(file);
-  
+
   // Storage Hardening: Ensure handle-based folder structure for security policies
   // Format: [userHandle]/[pathPrefix]/[timestamp]-[random].[ext]
   const handleSegment = userHandle ? `${userHandle.toLowerCase()}/` : '';
@@ -763,12 +795,12 @@ export const uploadMedia = async (file, pathPrefix = 'media', userHandle = null)
 
 export const uploadStatusFile = async (userHandle, file, options = {}) => {
   if (!userHandle) return { error: 'Missing handle' };
-  
+
   const { caption, audioFile, bgColor } = options;
-  
+
   let mediaUrl = null;
   let mediaType = 'text'; // Default for text-only statuses
-  
+
   // 1. Upload media file if provided
   if (file) {
     const { url, error: uploadError } = await uploadMedia(file, 'statuses', userHandle);
@@ -776,13 +808,13 @@ export const uploadStatusFile = async (userHandle, file, options = {}) => {
     mediaUrl = url;
     mediaType = file.type?.startsWith('video/') ? 'video' : 'image';
   }
-  
+
   // 2. Upload audio file if provided
   let audioUrl = null;
   if (audioFile) {
     const ext = audioFile.name?.split('.').pop() || 'mp3';
     const audioFileName = `${userHandle.toLowerCase()}/statuses/audio/${Date.now()}-${Math.random().toString(36).substring(2, 7)}.${ext}`;
-    
+
     const { data: audioData, error: audioUploadError } = await supabase.storage
       .from('mzansichat_media')
       .upload(audioFileName, audioFile, {
@@ -790,7 +822,7 @@ export const uploadStatusFile = async (userHandle, file, options = {}) => {
         upsert: false,
         contentType: audioFile.type || 'audio/mpeg'
       });
-    
+
     if (!audioUploadError) {
       const { data: audioPublic } = supabase.storage
         .from('mzansichat_media')
@@ -854,7 +886,7 @@ export const hashPinSecure = async (pin) => {
     false,
     ['deriveBits']
   );
-  
+
   const derivedBits = await crypto.subtle.deriveBits(
     {
       name: 'PBKDF2',

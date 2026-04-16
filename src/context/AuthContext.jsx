@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { 
+import {
   supabase, restoreSession, signUpUser, signInUser, signOutUser, getUser,
   setOnlineStatus, saveOneSignalId
 } from '../lib/supabaseClient';
@@ -42,6 +42,7 @@ export const AuthProvider = ({ children }) => {
   const [authError, setAuthError] = useState(null);
   const [referralCode, setReferralCode] = useState(null);
   const signingUp = useRef(false);
+  const signupCompletedAt = useRef(0);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -67,10 +68,14 @@ export const AuthProvider = ({ children }) => {
 
     initAuth();
 
-    // Listen for auth changes — skip during active signup to prevent race
+    // Listen for auth changes — skip during/shortly after signup to prevent race
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (signingUp.current) {
-        console.log('[Auth] Skipping listener during signup');
+        return;
+      }
+      // Skip listener for 3s after signup completes to avoid race with
+      // onAuthStateChange firing from signInAnonymously() inside signUpUser
+      if (Date.now() - signupCompletedAt.current < 3000) {
         return;
       }
       setSession(session);
@@ -80,6 +85,7 @@ export const AuthProvider = ({ children }) => {
           setCurrentUser(user);
           if (user.handle) syncOneSignalId(user.handle);
         }
+        // Don't clear currentUser if profile lookup fails — could be transient
       } else {
         setCurrentUser(null);
         setPinLocked(false);
@@ -97,15 +103,16 @@ export const AuthProvider = ({ children }) => {
       const signupData = { ...data, referred_by: referralCode };
       const res = await signUpUser(signupData);
       if (res.error) throw new Error(res.error);
-      
+
       setCurrentUser(res.user);
-      setPinLocked(false); 
+      setPinLocked(false);
       return { success: true };
     } catch (err) {
       setAuthError(err.message);
       return { success: false, error: err.message };
     } finally {
       signingUp.current = false;
+      signupCompletedAt.current = Date.now();
     }
   };
 
@@ -120,7 +127,7 @@ export const AuthProvider = ({ children }) => {
         }
         throw new Error(res.error);
       }
-      
+
       setCurrentUser(res.user);
       setPinLocked(true);
       return { success: true };

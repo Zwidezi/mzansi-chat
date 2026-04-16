@@ -1,15 +1,27 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { Component } from 'react';
+import { Component, Suspense, lazy } from 'react';
 import { AuthProvider } from './context/AuthContext';
 import { CallProvider } from './hooks/useCall';
 import CallOverlay from './components/call/CallOverlay';
 import MainShell from './components/layout/MainShell';
-import AuthFlow from './screens/AuthFlow';
-import ChatList from './screens/ChatList';
-import ChatScreen from './screens/ChatScreen';
-import Updates from './screens/Updates';
-import Profile from './screens/Profile';
-import Savings from './screens/Savings';
+
+// Code splitting — lazy load screens to reduce initial bundle size
+const AuthFlow = lazy(() => import('./screens/AuthFlow'));
+const ChatList = lazy(() => import('./screens/ChatList'));
+const ChatScreen = lazy(() => import('./screens/ChatScreen'));
+const Updates = lazy(() => import('./screens/Updates'));
+const Profile = lazy(() => import('./screens/Profile'));
+const Savings = lazy(() => import('./screens/Savings'));
+
+// Loading fallback for lazy-loaded routes
+const PageLoader = () => (
+  <div style={{
+    minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: '#0f0f0f'
+  }}>
+    <div className="loading-spinner" />
+  </div>
+);
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -28,11 +40,11 @@ class ErrorBoundary extends Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ 
-          minHeight: '100vh', 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'center', 
+        <div style={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
           justifyContent: 'center',
           background: '#0f0f0f',
           color: '#fff',
@@ -41,7 +53,7 @@ class ErrorBoundary extends Component {
         }}>
           <h1 style={{ fontSize: '1.5rem', marginBottom: '16px' }}>Oops! Something went wrong</h1>
           <p style={{ color: '#888', marginBottom: '24px' }}>{this.state.error?.message}</p>
-          <button 
+          <button
             onClick={() => {
               // Only clear session data — preserve PIN hash and WebAuthn enrollment
               localStorage.removeItem('mzansi_session');
@@ -74,24 +86,26 @@ const App = () => {
       <ErrorBoundary>
         <AuthProvider>
           <CallProvider>
-             <CallOverlay />
-             <Routes>
+            <CallOverlay />
+            <Suspense fallback={<PageLoader />}>
+              <Routes>
                 {/* Public/Auth Routes */}
                 <Route path="/" element={<AuthFlow />} />
                 <Route path="/restore" element={<AuthFlow defaultStep="signin" />} />
-                
+
                 {/* Authenticated Routes wrapped in MainShell */}
                 <Route element={<MainShell />}>
-                   <Route path="/chats" element={<ChatList />} />
-                   <Route path="/chat/:id" element={<ChatScreen />} />
-                   <Route path="/updates" element={<Updates />} />
-                   <Route path="/profile" element={<Profile />} />
-                   <Route path="/savings" element={<Savings />} />
+                  <Route path="/chats" element={<ChatList />} />
+                  <Route path="/chat/:id" element={<ChatScreen />} />
+                  <Route path="/updates" element={<Updates />} />
+                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/savings" element={<Savings />} />
                 </Route>
 
                 {/* Fallback */}
                 <Route path="*" element={<AuthFlow />} />
-             </Routes>
+              </Routes>
+            </Suspense>
           </CallProvider>
         </AuthProvider>
       </ErrorBoundary>

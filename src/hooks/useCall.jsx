@@ -17,7 +17,7 @@ export const CallProvider = ({ children }) => {
   const [callDuration, setCallDuration] = useState(0);
   const [isMinimized, setIsMinimized] = useState(false);
   const [facingMode, setFacingMode] = useState('user');
-  
+
   const peerRef = useRef(null);
   const activeCallRef = useRef(null);
   const timerRef = useRef(null);
@@ -27,16 +27,22 @@ export const CallProvider = ({ children }) => {
   useEffect(() => {
     if (!userHandle) return;
 
+    // STUN + TURN servers — TURN is essential for symmetric NAT (common on SA mobile networks)
+    const iceServers = [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ];
+    // Add TURN servers from env (required for calls on restrictive NATs)
+    const turnUrl = import.meta.env.VITE_TURN_URL;
+    const turnUser = import.meta.env.VITE_TURN_USERNAME;
+    const turnPass = import.meta.env.VITE_TURN_PASSWORD;
+    if (turnUrl && turnUser && turnPass) {
+      iceServers.push({ urls: turnUrl, username: turnUser, credential: turnPass });
+    }
+
     const peer = new Peer(`mzansi-${userHandle}`, {
       debug: 0,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:stun3.l.google.com:19302' },
-        ]
-      }
+      config: { iceServers }
     });
 
     peer.on('open', (id) => {
@@ -51,7 +57,7 @@ export const CallProvider = ({ children }) => {
       const callerHandle = incoming.peer.replace('mzansi-', '');
       // Determine call type from metadata
       const isVideo = incoming.metadata?.video ?? true;
-      
+
       setRemoteHandle(callerHandle);
       setCallType(isVideo ? 'video' : 'voice');
       setCallState('ringing');
@@ -277,7 +283,7 @@ export const CallProvider = ({ children }) => {
 
   const switchCamera = useCallback(async () => {
     if (callType !== 'video' || !localStream) return;
-    
+
     const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
     setFacingMode(newFacingMode);
 
@@ -301,10 +307,10 @@ export const CallProvider = ({ children }) => {
       // Preserve audio track (don't flip audio)
       const audioTrack = localStream.getAudioTracks()[0];
       const combinedStream = new MediaStream([newVideoTrack, audioTrack]);
-      
+
       oldVideoTrack.stop();
       setLocalStream(combinedStream);
-      
+
     } catch (err) {
       console.error('[Call] Camera switch failed:', err);
     }

@@ -24,9 +24,9 @@ export const IdentityStep = ({ onNext, initialData, t }) => {
       <div className="avatar-section">
         <label className="avatar-preview" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
           {pic ? (
-             <img src={typeof pic === 'string' ? pic : URL.createObjectURL(pic)} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <img src={typeof pic === 'string' ? pic : URL.createObjectURL(pic)} alt="Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           ) : (
-             <UserCircle2 size={64} color="var(--text-muted)" />
+            <UserCircle2 size={64} color="var(--text-muted)" />
           )}
           <input type="file" style={{ display: 'none' }} accept="image/*" onChange={handlePicSelect} />
         </label>
@@ -44,16 +44,16 @@ export const IdentityStep = ({ onNext, initialData, t }) => {
         <div className="input-field">
           <label>{t.my_alias}</label>
           <div className="alias-input-wrapper">
-             <span className="alias-at">@</span>
-             <input type="text" value={handle} onChange={(e) => setHandle(e.target.value.toLowerCase().trim())} placeholder="vuyani_d" />
+            <span className="alias-at">@</span>
+            <input type="text" value={handle} onChange={(e) => setHandle(e.target.value.toLowerCase().trim())} placeholder="vuyani_d" />
           </div>
         </div>
       </div>
 
       <div className="onboarding-footer">
-        <button 
-          className="btn-primary-full" 
-          onClick={() => onNext({ name, handle, pic })} 
+        <button
+          className="btn-primary-full"
+          onClick={() => onNext({ name, handle, pic })}
           disabled={!name || !handle}
         >
           {t.get_started}
@@ -63,7 +63,7 @@ export const IdentityStep = ({ onNext, initialData, t }) => {
   );
 };
 
-export const RecoveryStep = ({ onNext, t }) => {
+export const RecoveryStep = ({ onNext, onBack, submitting, error, t }) => {
   const [words, setWords] = useState([]);
   useEffect(() => { setWords(generateRecoveryKey()); }, []);
 
@@ -84,10 +84,26 @@ export const RecoveryStep = ({ onNext, t }) => {
         ))}
       </div>
 
-      <div className="onboarding-footer">
-        <button className="btn-primary-full" onClick={() => onNext(words)}>
-          {t.finish}
+      {error && (
+        <div style={{ marginTop: '16px', padding: '12px 16px', borderRadius: '12px', background: 'rgba(239,68,68,0.15)', color: '#f87171', fontSize: '0.85rem', fontWeight: '600', textAlign: 'center' }}>
+          {error}
+        </div>
+      )}
+
+      <div className="onboarding-footer" style={{ gap: '12px', display: 'flex', flexDirection: 'column' }}>
+        <button className="btn-primary-full" onClick={() => onNext(words)} disabled={submitting} style={{ opacity: submitting ? 0.6 : 1 }}>
+          {submitting ? 'Creating account...' : t.finish}
         </button>
+        {onBack && (
+          <button
+            className="btn-ghost-full"
+            onClick={onBack}
+            disabled={submitting}
+            style={{ border: '1px solid var(--border)', padding: '14px', borderRadius: '16px', fontWeight: '700', opacity: submitting ? 0.4 : 1 }}
+          >
+            Back
+          </button>
+        )}
       </div>
     </div>
   );
@@ -104,7 +120,7 @@ export const BiometricStep = ({ onNext, handle, t }) => {
         window.crypto.getRandomValues(challenge);
 
         const publicKeyCredentialCreationOptions = {
-          challenge: challenge, 
+          challenge: challenge,
           rp: { name: "MzansiChat", id: window.location.hostname },
           user: {
             id: new Uint8Array(16),
@@ -127,7 +143,7 @@ export const BiometricStep = ({ onNext, handle, t }) => {
         }
       }
     } catch (e) { console.warn("WebAuthn failed or skipped", e); }
-    
+
     setScanning(false);
     onNext();
   };
@@ -140,17 +156,17 @@ export const BiometricStep = ({ onNext, handle, t }) => {
       </div>
 
       <div className="biometric-visual">
-         <Fingerprint size={80} className={`biometric-icon ${scanning ? 'biometric-pulse' : ''}`} />
-         {scanning && <div className="scanning-text">SECURING...</div>}
+        <Fingerprint size={80} className={`biometric-icon ${scanning ? 'biometric-pulse' : ''}`} />
+        {scanning && <div className="scanning-text">SECURING...</div>}
       </div>
 
       <div className="onboarding-footer" style={{ gap: '12px', display: 'flex', flexDirection: 'column' }}>
         <button className="btn-primary-full" onClick={handleEnroll} disabled={scanning}>
           {scanning ? "Processing..." : t.finish}
         </button>
-        <button 
-          className="btn-ghost-full" 
-          onClick={() => onNext()} 
+        <button
+          className="btn-ghost-full"
+          onClick={() => onNext()}
           disabled={scanning}
           style={{ border: '1px solid var(--border)', padding: '14px', borderRadius: '16px', fontWeight: '700', opacity: scanning ? 0.4 : 1 }}
         >
@@ -179,13 +195,13 @@ export const PinSetupStep = ({ onFinish, t }) => {
         <h2>Set Access PIN</h2>
         <p>Choose 4 digits for quick local access.</p>
       </div>
-      
+
       <div className="pin-display">
-        {[0,1,2,3].map(i => <div key={i} className={`pin-dot ${pin.length > i ? 'filled' : ''}`} />)}
+        {[0, 1, 2, 3].map(i => <div key={i} className={`pin-dot ${pin.length > i ? 'filled' : ''}`} />)}
       </div>
 
       <div className="pin-keypad">
-        {[1,2,3,4,5,6,7,8,9].map(n => <div key={n} className="pin-key" onClick={() => handleKey(n.toString())}>{n}</div>)}
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => <div key={n} className="pin-key" onClick={() => handleKey(n.toString())}>{n}</div>)}
         <div className="pin-key action" onClick={handleDelete}><X size={20} /></div>
         <div className="pin-key" onClick={() => handleKey("0")}>0</div>
         <div className="pin-key empty"></div>
