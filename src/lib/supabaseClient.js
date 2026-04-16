@@ -496,6 +496,83 @@ export const getWebAuthnCredentials = async (handle) => {
 };
 
 // ═══════════════════════════════════════
+// Contacts / Friends
+// ═══════════════════════════════════════
+
+export const getContacts = async (userHandle) => {
+  if (!userHandle) return [];
+  const { data, error } = await supabase
+    .from('contacts')
+    .select('contact_handle, created_at')
+    .eq('user_handle', userHandle.toLowerCase())
+    .order('created_at', { ascending: true });
+
+  if (error) return [];
+
+  // Enrich with profile data
+  const handles = data.map(c => c.contact_handle);
+  if (handles.length === 0) return [];
+
+  const { data: profiles } = await supabase
+    .from('users_public')
+    .select('handle, name, profile_pic, is_online, last_seen')
+    .in('handle', handles);
+
+  const profileMap = {};
+  (profiles || []).forEach(p => { profileMap[p.handle] = p; });
+
+  return data.map(c => ({
+    handle: c.contact_handle,
+    addedAt: c.created_at,
+    ...(profileMap[c.contact_handle] || {}),
+  }));
+};
+
+export const addContact = async (userHandle, contactHandle) => {
+  const cleanUser = userHandle.toLowerCase().trim();
+  const cleanContact = contactHandle.toLowerCase().replace('@', '').trim();
+
+  if (cleanUser === cleanContact) {
+    return { error: "You can't add yourself as a contact!" };
+  }
+
+  // Check if the contact handle exists
+  const { data: existing } = await supabase
+    .from('users_public')
+    .select('handle')
+    .eq('handle', cleanContact)
+    .maybeSingle();
+
+  if (!existing) {
+    return { error: 'Handle not found. Double check the spelling!' };
+  }
+
+  // Add the contact
+  const { error } = await supabase
+    .from('contacts')
+    .insert([{ user_handle: cleanUser, contact_handle: cleanContact }]);
+
+  if (error) {
+    if (error.code === '23505') {
+      return { error: 'Already in your contacts!' };
+    }
+    return { error: error.message };
+  }
+
+  return { success: true };
+};
+
+export const removeContact = async (userHandle, contactHandle) => {
+  const { error } = await supabase
+    .from('contacts')
+    .delete()
+    .eq('user_handle', userHandle.toLowerCase())
+    .eq('contact_handle', contactHandle.toLowerCase());
+
+  return { error };
+};
+
+// ═══════════════════════════════════════
 // Communities
 // ═══════════════════════════════════════
 

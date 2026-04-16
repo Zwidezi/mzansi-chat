@@ -30,7 +30,7 @@ const MainShell = () => {
         user={currentUser}
         t={t}
         onLogout={handleLogout}
-        showBack={location.pathname !== '/chats' && location.pathname !== '/updates' && location.pathname !== '/profile' && location.pathname !== '/savings'}
+        showBack={location.pathname !== '/chats' && location.pathname !== '/updates' && location.pathname !== '/profile' && location.pathname !== '/savings' && location.pathname !== '/contacts'}
       />
 
       <main className="main-content" style={{ flexGrow: 1, overflowY: 'auto' }}>

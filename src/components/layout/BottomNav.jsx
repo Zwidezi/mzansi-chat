@@ -1,4 +1,4 @@
-import { MessageSquare, Zap, User, Landmark } from 'lucide-react';
+import { MessageSquare, Zap, User, Landmark, Users } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
 const BottomNav = ({ t }) => {
@@ -7,6 +7,10 @@ const BottomNav = ({ t }) => {
       <NavLink to="/chats" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
         <MessageSquare size={24} />
         <span>{t.chats}</span>
+      </NavLink>
+      <NavLink to="/contacts" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <Users size={24} />
+        <span>Contacts</span>
       </NavLink>
       <NavLink to="/updates" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
         <Zap size={24} />
