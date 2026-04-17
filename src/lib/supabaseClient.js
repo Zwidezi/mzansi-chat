@@ -1006,7 +1006,20 @@ export const uploadStatusFile = async (userHandle, file, options = {}) => {
     }
   }
 
-  // 3. Save to database
+  // 3. Heal JWT metadata so RLS policy can verify handle
+  // (same pattern as sendMessage — RLS checks user_handle = get_my_handle())
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const jwtHandle = session?.user?.user_metadata?.handle;
+    if (userHandle && jwtHandle !== userHandle.toLowerCase()) {
+      console.log('[Status] Healing JWT handle claim before insert');
+      await supabase.auth.updateUser({ data: { handle: userHandle.toLowerCase() } });
+    }
+  } catch (e) {
+    console.warn('[Status] Metadata heal failed (non-fatal):', e);
+  }
+
+  // 4. Save to database
   const { data, error } = await supabase
     .from('statuses')
     .insert([{
@@ -1019,6 +1032,10 @@ export const uploadStatusFile = async (userHandle, file, options = {}) => {
     }])
     .select()
     .single();
+
+  if (error) {
+    console.error('[Status] Insert failed:', error.message, error.code, error.details);
+  }
 
   return { data, error };
 };
