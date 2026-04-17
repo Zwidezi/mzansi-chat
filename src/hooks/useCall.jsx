@@ -35,10 +35,33 @@ export const CallProvider = ({ children }) => {
       return;
     }
 
-    // STUN + TURN servers — TURN is essential for symmetric NAT (common on SA mobile networks)
+    // STUN + TURN servers
+    // Free TURN servers from Metered Open Relay (essential for mobile-to-mobile calls)
     const iceServers = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
+      // Free Metered TURN servers (TCP + TLS for reliability on mobile networks)
+      { urls: 'stun:openrelay.metered.ca:80' },
+      { 
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      { 
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      { 
+        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      { 
+        urls: 'turns:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
     ];
     // Add TURN servers from env (required for calls on restrictive NATs)
     const turnUrl = import.meta.env.VITE_TURN_URL;
