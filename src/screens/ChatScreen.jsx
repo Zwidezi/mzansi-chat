@@ -363,24 +363,24 @@ const ChatScreen = () => {
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '18px', flexShrink: 0, marginLeft: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0, marginLeft: '12px' }}>
           {!isAI && !isGroup && (
             <>
               <Phone
-                size={24}
-                color={canCall ? 'var(--primary)' : 'var(--text-muted)'}
-                style={{ cursor: canCall ? 'pointer' : 'not-allowed', opacity: canCall ? 1 : 0.3, transition: 'all 0.2s' }}
-                onClick={canCall ? handleVoiceCall : undefined}
+                size={22}
+                color="white"
+                style={{ cursor: 'pointer', opacity: 0.9, transition: 'all 0.2s' }}
+                onClick={handleVoiceCall}
               />
               <Video
-                size={24}
-                color={canCall ? 'var(--primary)' : 'var(--text-muted)'}
-                style={{ cursor: canCall ? 'pointer' : 'not-allowed', opacity: canCall ? 1 : 0.3, transition: 'all 0.2s' }}
-                onClick={canCall ? handleVideoCall : undefined}
+                size={22}
+                color="white"
+                style={{ cursor: 'pointer', opacity: 0.9, transition: 'all 0.2s' }}
+                onClick={handleVideoCall}
               />
             </>
           )}
-          {isGroup && <Database size={24} onClick={() => setShowVault(!showVault)} color={showVault ? 'var(--primary)' : 'var(--success)'} style={{ cursor: 'pointer', opacity: 1 }} />}
+          {isGroup && <Database size={24} onClick={() => setShowVault(!showVault)} color={showVault ? 'var(--primary)' : 'white'} style={{ cursor: 'pointer', opacity: 0.9 }} />}
         </div>
       </header>
 
