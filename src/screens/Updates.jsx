@@ -7,6 +7,25 @@ import {
 import { useAuth } from '../context/AuthContext';
 import GoogleAd from '../components/common/GoogleAd';
 
+// Helper: format time ago (WhatsApp-style)
+const getTimeAgo = (dateStr) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} min${diffMins > 1 ? 's' : ''} ago`;
+  if (diffHours < 24) {
+    const hours = date.getHours().toString().padStart(2, '0');
+    const mins = date.getMinutes().toString().padStart(2, '0');
+    return `Today, ${hours}:${mins}`;
+  }
+  return 'Yesterday';
+};
+
 const StatusViewer = ({ statuses, userHandle, onClose }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -480,30 +499,154 @@ const Updates = () => {
         <button className="btn-primary" style={{ padding: '6px 12px', borderRadius: '12px' }} onClick={() => setShowCreateModal(true)}>+ Create</button>
       </div>
 
-      {/* Statuses Row */}
-      <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', paddingBottom: '20px', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', minWidth: '70px', cursor: 'pointer' }} onClick={() => setShowStatusCreator(true)}>
-          <div style={{ width: '64px', height: '64px', borderRadius: '32px', background: 'var(--primary-gradient)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-             <Plus size={28} color="white" />
-             <div style={{ position: 'absolute', bottom: 0, right: 0, background: 'var(--primary)', borderRadius: '50%', width: '22px', height: '22px', border: '3px solid var(--bg-dark)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Plus size={12} color="white" />
-             </div>
+      {/* WhatsApp-style Status Section */}
+      <div style={{ marginBottom: '24px' }}>
+        {/* My Status */}
+        <div 
+          onClick={() => setShowStatusCreator(true)} 
+          style={{ 
+            display: 'flex', alignItems: 'center', gap: '14px', padding: '12px 0', 
+            cursor: 'pointer', borderBottom: '1px solid var(--border)' 
+          }}
+        >
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <div style={{ 
+              width: '52px', height: '52px', borderRadius: '50%', 
+              background: groupedStatuses[currentUser?.handle] ? 'var(--primary)' : 'var(--surface-light)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: groupedStatuses[currentUser?.handle] ? '2px solid var(--primary)' : '2px solid var(--border)',
+              overflow: 'hidden'
+            }}>
+              {currentUser?.profile_pic ? (
+                <img src={currentUser.profile_pic} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <span style={{ color: 'var(--text-muted)', fontWeight: '800', fontSize: '1.2rem' }}>
+                  {currentUser?.handle?.[0]?.toUpperCase() || '?'}
+                </span>
+              )}
+            </div>
+            <div style={{ 
+              position: 'absolute', bottom: -2, right: -2, 
+              background: 'var(--primary)', borderRadius: '50%', 
+              width: '20px', height: '20px', 
+              border: '2px solid var(--bg-dark)', 
+              display: 'flex', alignItems: 'center', justifyContent: 'center' 
+            }}>
+              <Plus size={12} color="white" />
+            </div>
           </div>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Add Status</span>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontWeight: '700', fontSize: '0.95rem', marginBottom: '2px' }}>My Status</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+              {groupedStatuses[currentUser?.handle] 
+                ? `${groupedStatuses[currentUser.handle].length} update${groupedStatuses[currentUser.handle].length > 1 ? 's' : ''} • Tap to view`
+                : 'Tap to add status update'
+              }
+            </p>
+          </div>
         </div>
 
-        {Object.entries(groupedStatuses).map(([handle, userStatuses]) => (
-          handle !== currentUser?.handle && (
-            <div key={handle} onClick={() => setViewingUser(handle)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', minWidth: '70px', cursor: 'pointer' }}>
-               <div style={{ width: '64px', height: '64px', borderRadius: '32px', padding: '3px', border: '2px solid var(--primary)' }}>
-                  <div style={{ width: '100%', height: '100%', borderRadius: '30px', background: 'var(--surface-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-                     <span style={{ color: 'var(--primary)', fontWeight: '800' }}>{handle[0].toUpperCase()}</span>
+        {/* View own status if exists */}
+        {groupedStatuses[currentUser?.handle] && (
+          <div 
+            onClick={() => setViewingUser(currentUser.handle)}
+            style={{ padding: '8px 0 0 66px', cursor: 'pointer' }}
+          >
+            <p style={{ color: 'var(--primary)', fontSize: '0.8rem', fontWeight: '600' }}>
+              👁 View your status
+            </p>
+          </div>
+        )}
+
+        {/* Recent Updates Header */}
+        {Object.keys(groupedStatuses).filter(h => h !== currentUser?.handle).length > 0 && (
+          <p style={{ 
+            fontSize: '0.75rem', fontWeight: '700', color: 'var(--text-muted)', 
+            textTransform: 'uppercase', letterSpacing: '0.05em',
+            marginTop: '20px', marginBottom: '8px' 
+          }}>
+            Recent updates
+          </p>
+        )}
+
+        {/* Other Users' Statuses - WhatsApp-style vertical list */}
+        {Object.entries(groupedStatuses)
+          .filter(([handle]) => handle !== currentUser?.handle)
+          .map(([handle, userStatuses]) => {
+            const latestStatus = userStatuses[userStatuses.length - 1];
+            const timeAgo = getTimeAgo(latestStatus?.created_at);
+            const statusCount = userStatuses.length;
+
+            return (
+              <div 
+                key={handle} 
+                onClick={() => setViewingUser(handle)} 
+                style={{ 
+                  display: 'flex', alignItems: 'center', gap: '14px', 
+                  padding: '10px 0', cursor: 'pointer',
+                  borderBottom: '1px solid rgba(255,255,255,0.04)'
+                }}
+              >
+                {/* Avatar with segmented ring */}
+                <div style={{ flexShrink: 0, position: 'relative' }}>
+                  <svg width="56" height="56" viewBox="0 0 56 56">
+                    {/* Status ring segments */}
+                    {Array.from({ length: statusCount }).map((_, i) => {
+                      const gap = statusCount > 1 ? 4 : 0;
+                      const totalDeg = 360 - (gap * statusCount);
+                      const segDeg = totalDeg / statusCount;
+                      const startDeg = i * (segDeg + gap) - 90;
+                      const endDeg = startDeg + segDeg;
+                      const r = 26;
+                      const cx = 28, cy = 28;
+                      const startRad = (startDeg * Math.PI) / 180;
+                      const endRad = (endDeg * Math.PI) / 180;
+                      const x1 = cx + r * Math.cos(startRad);
+                      const y1 = cy + r * Math.sin(startRad);
+                      const x2 = cx + r * Math.cos(endRad);
+                      const y2 = cy + r * Math.sin(endRad);
+                      const largeArc = segDeg > 180 ? 1 : 0;
+                      return (
+                        <path
+                          key={i}
+                          d={`M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`}
+                          fill="none"
+                          stroke="var(--primary)"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                        />
+                      );
+                    })}
+                  </svg>
+                  <div style={{
+                    position: 'absolute', top: '4px', left: '4px',
+                    width: '48px', height: '48px', borderRadius: '50%',
+                    background: 'var(--surface-light)', overflow: 'hidden',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>
+                    <span style={{ color: 'var(--primary)', fontWeight: '800', fontSize: '1.1rem' }}>
+                      {handle[0].toUpperCase()}
+                    </span>
                   </div>
-               </div>
-               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>@{handle}</span>
-            </div>
-          )
-        ))}
+                </div>
+
+                {/* Name & Time */}
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontWeight: '700', fontSize: '0.95rem', marginBottom: '2px' }}>@{handle}</p>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{timeAgo}</p>
+                </div>
+              </div>
+            );
+          })
+        }
+
+        {/* Empty state */}
+        {Object.keys(groupedStatuses).filter(h => h !== currentUser?.handle).length === 0 && !loading && (
+          <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)' }}>
+            <p style={{ fontSize: '0.9rem', marginBottom: '4px' }}>No recent updates</p>
+            <p style={{ fontSize: '0.8rem' }}>Status updates from other users will appear here</p>
+          </div>
+        )}
       </div>
 
       {showStatusCreator && <StatusCreator onUpload={handleStatusUpload} onClose={() => setShowStatusCreator(false)} />}
