@@ -31,25 +31,34 @@ const StatusViewer = ({ statuses, userHandle, onClose }) => {
   const [progress, setProgress] = useState(0);
   const [replyText, setReplyText] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [sentReaction, setSentReaction] = useState(null); // brief animation
   const audioRef = useRef(null);
+  const holdTimer = useRef(null);
+  const isHolding = useRef(false);
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
   const { currentUser } = useAuth();
 
   const currentStatus = statuses[currentIndex];
 
+  // Timer: pause when isPaused or typing
   useEffect(() => {
-    const duration = 5000; // 5 seconds per status
+    const duration = 5000;
     const interval = 50;
     const step = (interval / duration) * 100;
     
-    // Play audio if available
     if (currentStatus?.audio_url && audioRef.current) {
       audioRef.current.volume = 0.5;
-      audioRef.current.play().catch(e => console.warn('[Status] Audio playback failed', e));
+      if (!isPaused) {
+        audioRef.current.play().catch(() => {});
+      } else {
+        audioRef.current.pause();
+      }
     }
 
     const timer = setInterval(() => {
-      // Pause progress if user is typing a reply
-      if (replyText.length > 0) return;
+      if (isPaused || replyText.length > 0) return;
 
       setProgress(p => {
         if (p >= 100) {
@@ -72,7 +81,55 @@ const StatusViewer = ({ statuses, userHandle, onClose }) => {
         audioRef.current.currentTime = 0;
       }
     };
-  }, [currentIndex, statuses, onClose, currentStatus]);
+  }, [currentIndex, statuses, onClose, currentStatus, isPaused]);
+
+  // ── Hold to Pause (touch + mouse) ──
+  const handleHoldStart = (e) => {
+    // Don't pause if tapping on footer/buttons
+    if (e.target.closest('footer') || e.target.closest('button') || e.target.closest('input')) return;
+    
+    touchStartX.current = e.touches ? e.touches[0].clientX : e.clientX;
+    touchStartY.current = e.touches ? e.touches[0].clientY : e.clientY;
+    isHolding.current = false;
+    
+    holdTimer.current = setTimeout(() => {
+      isHolding.current = true;
+      setIsPaused(true);
+    }, 200); // 200ms = hold threshold
+  };
+
+  const handleHoldEnd = (e) => {
+    clearTimeout(holdTimer.current);
+    
+    if (isHolding.current) {
+      // Was holding — just unpause
+      setIsPaused(false);
+      isHolding.current = false;
+      return;
+    }
+    
+    // Was a quick tap — navigate left/right
+    if (e.target.closest('footer') || e.target.closest('button') || e.target.closest('input')) return;
+    
+    const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+    const screenW = window.innerWidth;
+    
+    if (clientX < screenW * 0.3) {
+      // Tap left = previous
+      if (currentIndex > 0) {
+        setCurrentIndex(currentIndex - 1);
+        setProgress(0);
+      }
+    } else if (clientX > screenW * 0.7) {
+      // Tap right = next
+      if (currentIndex < statuses.length - 1) {
+        setCurrentIndex(currentIndex + 1);
+        setProgress(0);
+      } else {
+        onClose();
+      }
+    }
+  };
 
   const handleAction = async (content, type = 'reply') => {
     if (!currentUser || isSending) return;
@@ -91,10 +148,12 @@ const StatusViewer = ({ statuses, userHandle, onClose }) => {
     
     if (type === 'reply') {
       setReplyText("");
-      onClose(); // Close viewer after formal reply
+      onClose();
     } else {
+      // Show reaction sent animation
+      setSentReaction(content);
+      setTimeout(() => setSentReaction(null), 1200);
       setIsSending(false);
-      // Maybe show a quick animation for reaction?
     }
   };
 
@@ -107,35 +166,73 @@ const StatusViewer = ({ statuses, userHandle, onClose }) => {
   ];
 
   return (
-    <div className="status-viewer-overlay" style={{ position: 'fixed', inset: 0, background: 'black', zIndex: 5000, display: 'flex', flexDirection: 'column' }}>
-      <div className="status-progress-container" style={{ display: 'flex', gap: '4px', padding: '12px', zIndex: 10 }}>
+    <div 
+      className="status-viewer-overlay" 
+      style={{ position: 'fixed', inset: 0, background: 'black', zIndex: 5000, display: 'flex', flexDirection: 'column', userSelect: 'none', WebkitUserSelect: 'none' }}
+      onTouchStart={handleHoldStart}
+      onTouchEnd={handleHoldEnd}
+      onMouseDown={handleHoldStart}
+      onMouseUp={handleHoldEnd}
+    >
+      {/* Progress bars */}
+      <div className="status-progress-container" style={{ display: 'flex', gap: '4px', padding: '12px 12px 8px', zIndex: 10 }}>
         {statuses.map((s, i) => (
           <div key={s.id} className="status-progress-bar" style={{ flex: 1, height: '3px', background: 'rgba(255,255,255,0.2)', borderRadius: '2px' }}>
-            <div className="status-progress-fill" style={{ width: i < currentIndex ? '100%' : i === currentIndex ? `${progress}%` : '0%', height: '100%', background: 'white', transition: 'width 0.1s linear' }} />
+            <div className="status-progress-fill" style={{ 
+              width: i < currentIndex ? '100%' : i === currentIndex ? `${progress}%` : '0%', 
+              height: '100%', background: 'white', borderRadius: '2px',
+              transition: isPaused ? 'none' : 'width 0.1s linear' 
+            }} />
           </div>
         ))}
       </div>
       
-      <header style={{ padding: '0 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
+      {/* Header */}
+      <header style={{ padding: '0 16px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 10 }}>
          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div className="avatar" style={{ width: '32px', height: '32px', background: 'var(--primary)', color: 'white', borderRadius: '16px' }}>{userHandle[0].toUpperCase()}</div>
-            <span style={{ fontWeight: '800', color: 'white' }}>@{userHandle}</span>
+            <span style={{ fontWeight: '800', color: 'white', fontSize: '0.9rem' }}>@{userHandle}</span>
          </div>
-         <button onClick={onClose} style={{ background: 'transparent', border: 'none' }}><X size={24} color="white" /></button>
+         <button onClick={onClose} style={{ background: 'transparent', border: 'none', padding: '8px' }}><X size={24} color="white" /></button>
       </header>
 
       {/* Audio Element */}
       {currentStatus?.audio_url && <audio ref={audioRef} src={currentStatus.audio_url} />}
 
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+      {/* Main Content Area */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'hidden' }}>
          {currentStatus.media_type === 'text' ? (
            <div className={`status-preview-area ${currentStatus.bg_color || 'bg-dark-slate'}`} style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <div className="status-render-text">{currentStatus.caption}</div>
            </div>
          ) : currentStatus.media_type === 'video' ? (
-           <video src={currentStatus.media_url} autoPlay muted playsInline style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+           <video src={currentStatus.media_url} autoPlay muted={!isPaused} playsInline style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
          ) : (
            <img src={currentStatus.media_url} alt="Status" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+         )}
+
+         {/* Paused Indicator */}
+         {isPaused && (
+           <div style={{
+             position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+             background: 'rgba(0,0,0,0.6)', borderRadius: '50%', width: '64px', height: '64px',
+             display: 'flex', alignItems: 'center', justifyContent: 'center',
+             backdropFilter: 'blur(8px)', animation: 'fadeIn 0.2s ease'
+           }}>
+             <div style={{ width: '8px', height: '24px', background: 'white', borderRadius: '2px', marginRight: '6px' }} />
+             <div style={{ width: '8px', height: '24px', background: 'white', borderRadius: '2px' }} />
+           </div>
+         )}
+
+         {/* Reaction Sent Animation */}
+         {sentReaction && (
+           <div style={{
+             position: 'absolute', bottom: '120px', left: '50%', transform: 'translateX(-50%)',
+             fontSize: '3rem', animation: 'reactionFloat 1.2s ease-out forwards',
+             pointerEvents: 'none', zIndex: 20
+           }}>
+             {sentReaction}
+           </div>
          )}
 
          {/* Audio Indicator */}
@@ -156,17 +253,36 @@ const StatusViewer = ({ statuses, userHandle, onClose }) => {
              {currentStatus.caption}
            </div>
          )}
+
+         {/* Tap zones indicator (subtle) */}
+         {currentIndex > 0 && (
+           <div style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', opacity: 0.15, pointerEvents: 'none' }}>
+             <ChevronLeft size={28} color="white" />
+           </div>
+         )}
+         {currentIndex < statuses.length - 1 && (
+           <div style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', opacity: 0.15, pointerEvents: 'none' }}>
+             <ChevronRight size={28} color="white" />
+           </div>
+         )}
       </div>
 
-      <footer style={{ padding: '16px', zIndex: 10, background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)' }}>
-         <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginBottom: '12px' }}>
+      {/* Footer: Reactions + Reply */}
+      <footer style={{ padding: '12px 16px 16px', zIndex: 10, background: 'linear-gradient(to top, rgba(0,0,0,0.8), transparent)' }}>
+         <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginBottom: '10px' }}>
             {REACTIONS.map(r => (
                <button 
                  key={r.emoji} 
                  onClick={() => handleAction(r.emoji, 'reaction')} 
-                 style={{ background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '50%', width: '40px', height: '40px', fontSize: '1.2rem', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'transform 0.1s' }}
-                 onMouseDown={e => e.target.style.transform = 'scale(0.9)'}
-                 onMouseUp={e => e.target.style.transform = 'scale(1)'}
+                 style={{ 
+                   background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '50%', 
+                   width: '44px', height: '44px', fontSize: '1.3rem', 
+                   display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                   cursor: 'pointer', transition: 'transform 0.15s, background 0.15s',
+                   backdropFilter: 'blur(8px)'
+                 }}
+                 onTouchStart={e => e.currentTarget.style.transform = 'scale(1.2)'}
+                 onTouchEnd={e => e.currentTarget.style.transform = 'scale(1)'}
                >
                  {r.emoji}
                </button>
@@ -178,13 +294,15 @@ const StatusViewer = ({ statuses, userHandle, onClose }) => {
               placeholder="Reply to status..." 
               value={replyText}
               onChange={e => setReplyText(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleAction(replyText)}
-              style={{ flex: 1, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '20px', padding: '10px 16px', color: 'white', outline: 'none' }}
+              onKeyDown={e => e.key === 'Enter' && replyText && handleAction(replyText)}
+              onFocus={() => setIsPaused(true)}
+              onBlur={() => { if (!replyText) setIsPaused(false); }}
+              style={{ flex: 1, background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '24px', padding: '12px 18px', color: 'white', outline: 'none', fontSize: '0.9rem' }}
             />
             {replyText && (
                <button 
                   onClick={() => handleAction(replyText)}
-                  style={{ background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '20px', padding: '0 16px', fontWeight: '800' }}
+                  style={{ background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '50%', width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
                >
                   <Send size={18} />
                </button>
