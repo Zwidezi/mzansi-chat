@@ -241,19 +241,18 @@ const ActiveCallScreen = ({
         }}
       />
 
-      {/* Local PIP Video */}
+      {/* Local PIP Video (top-right, WhatsApp-style rounded) */}
       {localStream && (
         <div 
           onClick={(e) => { e.stopPropagation(); setIsSwapped(!isSwapped); }}
           style={{
             position: 'absolute', 
-            top: 'max(60px, env(safe-area-inset-top, 60px))', 
-            right: '16px', zIndex: 10,
-            width: '100px', height: '140px', 
-            borderRadius: '16px', overflow: 'hidden', cursor: 'pointer',
-            border: '2px solid rgba(255,255,255,0.3)', 
-            boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+            top: 'max(50px, env(safe-area-inset-top, 50px))', 
+            right: '12px', zIndex: 10,
+            width: '110px', height: '150px', 
+            borderRadius: '14px', overflow: 'hidden', cursor: 'pointer',
+            border: '2px solid rgba(255,255,255,0.2)', 
+            boxShadow: '0 4px 20px rgba(0,0,0,0.6)',
           }}
         >
           <video
@@ -268,69 +267,89 @@ const ActiveCallScreen = ({
         </div>
       )}
 
-      {/* Top Status Bar */}
+      {/* Top: Name & Duration chip */}
       <div style={{
         position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
-        padding: 'max(50px, env(safe-area-inset-top, 50px)) 20px 16px',
-        background: showControls ? 'linear-gradient(180deg, rgba(0,0,0,0.7) 0%, transparent 100%)' : 'transparent',
-        transition: 'background 0.3s',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start'
+        padding: 'max(50px, env(safe-area-inset-top, 50px)) 16px 12px',
+        background: 'linear-gradient(180deg, rgba(0,0,0,0.5) 0%, transparent 100%)',
+        opacity: showControls ? 1 : 0, transition: 'opacity 0.3s'
       }}>
-        {showControls && (
-          <>
-            <div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '800', color: 'white', marginBottom: '2px' }}>@{remoteHandle}</h3>
-              <p style={{ color: '#22c55e', fontSize: '0.8rem', fontWeight: '600' }}>{formatDuration(callDuration)}</p>
-            </div>
-            <button onClick={(e) => { e.stopPropagation(); onToggleMinimize(); }} style={{
-              background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: '50%', 
-              width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              backdropFilter: 'blur(10px)', cursor: 'pointer'
-            }}>
-              {isMinimized ? <Maximize2 size={18} color="white" /> : <Minimize2 size={18} color="white" />}
-            </button>
-          </>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* Small avatar */}
+          <div style={{
+            width: '36px', height: '36px', borderRadius: '50%',
+            background: 'linear-gradient(135deg, #0ec0df, #8b5cf6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '0.9rem', fontWeight: '900', color: 'white', flexShrink: 0
+          }}>
+            {remoteHandle?.[0]?.toUpperCase()}
+          </div>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: '0.95rem', fontWeight: '700', color: 'white' }}>@{remoteHandle}</p>
+            <p style={{ fontSize: '0.75rem', color: '#22c55e', fontWeight: '600' }}>{formatDuration(callDuration)}</p>
+          </div>
+        </div>
       </div>
 
-      {/* Bottom Controls */}
+      {/* Bottom: WhatsApp-style compact control bar */}
       <div style={{
         position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20,
-        padding: '20px 24px max(40px, env(safe-area-inset-bottom, 40px))',
-        background: showControls ? 'linear-gradient(0deg, rgba(0,0,0,0.7) 0%, transparent 100%)' : 'transparent',
-        transition: 'all 0.3s',
+        padding: '16px 16px max(28px, env(safe-area-inset-bottom, 28px))',
+        background: 'linear-gradient(0deg, rgba(0,0,0,0.6) 0%, transparent 100%)',
         opacity: showControls ? 1 : 0,
-        transform: showControls ? 'translateY(0)' : 'translateY(20px)',
+        transform: showControls ? 'translateY(0)' : 'translateY(16px)',
+        transition: 'all 0.3s ease',
         pointerEvents: showControls ? 'auto' : 'none'
       }}>
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '16px' }}>
-          {/* Mute */}
-          <CallButton
-            icon={muted ? <MicOff size={22} color="white" /> : <Mic size={22} color="white" />}
-            active={muted}
-            onClick={(e) => { e.stopPropagation(); const result = onToggleMute(); setMuted(!result); }}
-          />
-          {/* Camera */}
-          <CallButton
-            icon={cameraOff ? <VideoOff size={22} color="white" /> : <Video size={22} color="white" />}
-            active={cameraOff}
-            onClick={(e) => { e.stopPropagation(); const result = onToggleCamera(); setCameraOff(!result); }}
-          />
+        {/* Compact pill bar */}
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+          background: 'rgba(40,40,40,0.85)', borderRadius: '40px',
+          padding: '8px 12px', maxWidth: '320px', margin: '0 auto',
+          backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
+          border: '1px solid rgba(255,255,255,0.08)'
+        }}>
           {/* Flip Camera */}
-          <CallButton
-            icon={<RotateCw size={22} color="white" />}
-            active={false}
-            onClick={(e) => { e.stopPropagation(); onSwitchCamera(); }}
-          />
-          {/* End Call */}
+          <button onClick={(e) => { e.stopPropagation(); onSwitchCamera(); }} style={{
+            width: '46px', height: '46px', borderRadius: '50%',
+            background: 'rgba(255,255,255,0.12)', border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'background 0.2s'
+          }}>
+            <RotateCw size={20} color="white" />
+          </button>
+
+          {/* Video Toggle */}
+          <button onClick={(e) => { e.stopPropagation(); const result = onToggleCamera(); setCameraOff(!result); }} style={{
+            width: '46px', height: '46px', borderRadius: '50%',
+            background: cameraOff ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.12)',
+            border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'background 0.2s'
+          }}>
+            {cameraOff ? <VideoOff size={20} color="white" /> : <Video size={20} color="white" />}
+          </button>
+
+          {/* Mic Toggle */}
+          <button onClick={(e) => { e.stopPropagation(); const result = onToggleMute(); setMuted(!result); }} style={{
+            width: '46px', height: '46px', borderRadius: '50%',
+            background: muted ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.12)',
+            border: 'none', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            transition: 'background 0.2s'
+          }}>
+            {muted ? <MicOff size={20} color="white" /> : <Mic size={20} color="white" />}
+          </button>
+
+          {/* End Call (Red, slightly larger) */}
           <button onClick={(e) => { e.stopPropagation(); onEnd(); }} style={{
-            width: '60px', height: '60px', borderRadius: '50%',
+            width: '52px', height: '52px', borderRadius: '50%',
             background: '#ef4444', border: 'none', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 6px 24px rgba(239,68,68,0.4)',
+            boxShadow: '0 4px 16px rgba(239,68,68,0.4)',
             transition: 'transform 0.15s'
           }}>
-            <PhoneOff size={26} color="white" />
+            <PhoneOff size={22} color="white" />
           </button>
         </div>
       </div>
