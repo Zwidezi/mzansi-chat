@@ -205,9 +205,18 @@ const AuthFlow = ({ defaultStep = 'welcome' }) => {
 
   const handleSignInWithCheck = async (handle, words) => {
     const res = await handleSignIn(handle, words);
-    if (res.needsProfile) {
-      // If profile is missing but auth succeeded, we should ideally move to name/pic setup
-      // For now just stay on signin and show the error from back-end
+    if (res.success) {
+      // Check if this device has a PIN set up
+      const hasLocalPin = localStorage.getItem('mzansi_pin_hash');
+      if (!hasLocalPin) {
+        // New device — need to set up local security
+        setSignupData(prev => ({ ...prev, handle }));
+        setOnboarding(true);
+        setStep('signin_biometric');
+        return res;
+      }
+      // Existing device — PIN gate will handle it
+    } else if (res.needsProfile) {
       setAuthError(res.error);
     }
     return res;
@@ -247,11 +256,14 @@ const AuthFlow = ({ defaultStep = 'welcome' }) => {
       {step === 'signin' && (
         <SignInStep
           onBack={() => setStep('welcome')}
-          onSignIn={handleSignIn}
+          onSignIn={handleSignInWithCheck}
           authError={authError}
           t={t}
         />
       )}
+
+      {step === 'signin_biometric' && <BiometricStep onNext={() => setStep('signin_pin_setup')} handle={signupData.handle} t={t} />}
+      {step === 'signin_pin_setup' && <PinSetupStep onFinish={onPinSetupFinish} t={t} />}
     </div>
   );
 };

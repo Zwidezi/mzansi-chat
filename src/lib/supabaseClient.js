@@ -9,12 +9,28 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
+// Singleton pattern for Supabase client to prevent "Multiple GoTrueClient instances" during HMR
+const createSupabaseClient = () => {
+  if (typeof window !== 'undefined' && window._supabase) {
+    return window._supabase;
   }
-});
+
+  const client = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      // Increase lock timeout to reduce contention in React StrictMode.
+      lockTimeout: 10000,
+    }
+  });
+
+  if (typeof window !== 'undefined') {
+    window._supabase = client;
+  }
+  return client;
+};
+
+export const supabase = createSupabaseClient();
 
 export const bufferToBase64 = (buffer) => {
   return btoa(String.fromCharCode(...new Uint8Array(buffer)));
@@ -132,25 +148,40 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
   }
 
   // 2. Get or create anonymous auth session
-  // IMPORTANT: We do NOT call signOut() here because it triggers onAuthStateChange
-  // which causes re-renders and infinite loops in the AuthFlow component.
-  // Instead, we reuse any existing session or create a new one.
+  // If an orphaned session exists (anonymous auth without a profile), sign out first
+  // to avoid conflicts with the new signup attempt.
   const { data: { session: existingSession } } = await supabase.auth.getSession();
   let userId, authSession;
 
   if (existingSession?.user) {
-    // Reuse existing anonymous session — check if this user already has a profile
-    userId = existingSession.user.id;
-    authSession = existingSession;
+    // Check if this anonymous session already has a profile
     const { data: existingProfile } = await supabase
       .from('users')
       .select('handle')
-      .eq('user_id', userId)
+      .eq('user_id', existingSession.user.id)
       .maybeSingle();
+
     if (existingProfile) {
       return { error: 'You already have an account. Try signing in instead.' };
     }
-    console.log('[Signup] Reusing existing session:', userId);
+
+    // Orphaned session (anonymous auth exists but profile insert failed previously).
+    // Sign out and create a fresh session so the new signup attempt doesn't conflict.
+    console.log('[Signup] Detected orphaned session, signing out to start fresh:', existingSession.user.id);
+    try { await supabase.auth.signOut(); } catch (_) { /* best effort */ }
+
+    // Create a new anonymous session
+    const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
+    if (authError) {
+      console.error('[Signup] Auth error after orphan cleanup:', authError);
+      return { error: authError.message };
+    }
+    userId = authData.user?.id;
+    authSession = authData.session;
+    if (!userId) {
+      return { error: 'Failed to create account. Please try again.' };
+    }
+    console.log('[Signup] Fresh session created after orphan cleanup:', userId);
   } else {
     // No existing session — create a new anonymous one
     const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
@@ -164,6 +195,14 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
       return { error: 'Failed to create account. Please try again.' };
     }
     console.log('[Signup] Anonymous user created:', userId);
+  }
+
+  // 2b. Set handle in user_metadata so JWT includes it for RLS policies
+  try {
+    await supabase.auth.updateUser({ data: { handle: cleanHandle } });
+    console.log('[Signup] Set user_metadata.handle:', cleanHandle);
+  } catch (metaErr) {
+    console.warn('[Signup] Failed to set user_metadata (non-fatal):', metaErr);
   }
 
   // 4. Create public profile linked to auth user (with retry for lock contention)
@@ -467,6 +506,15 @@ export const saveOneSignalId = async (handle, oneSignalId) => {
   return { user: data, error };
 };
 
+export const savePeerId = async (handle, peerId) => {
+  if (!handle || !peerId) return;
+  const { error } = await supabase
+    .from('users')
+    .update({ peer_id: peerId })
+    .eq('handle', handle.toLowerCase());
+  return { error };
+};
+
 // ═══════════════════════════════════════
 // WebAuthn / Biometric Helpers
 // ═══════════════════════════════════════
@@ -645,6 +693,21 @@ export const getJoinedCommunities = async (userHandle) => {
 // ═══════════════════════════════════════
 
 export const sendMessage = async (chatId, senderHandle, senderName, content, type = 'text', metadata = {}) => {
+  // Ensure the JWT has the handle claim before inserting.
+  // RLS policies on `messages` check auth.jwt() ->> 'handle', and if it's
+  // missing (e.g. session just restored, metadata not yet healed), the INSERT
+  // gets a 403. Healing here prevents that race condition.
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const jwtHandle = session?.user?.user_metadata?.handle;
+    if (senderHandle && jwtHandle !== senderHandle.toLowerCase()) {
+      console.log('[SendMessage] Healing JWT handle claim before insert');
+      await supabase.auth.updateUser({ data: { handle: senderHandle.toLowerCase() } });
+    }
+  } catch (e) {
+    console.warn('[SendMessage] Metadata heal failed (non-fatal):', e);
+  }
+
   const { data, error } = await supabase
     .from('messages')
     .insert([{

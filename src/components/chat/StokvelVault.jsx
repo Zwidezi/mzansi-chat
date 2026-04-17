@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Database, TrendingUp, Users, ArrowUpRight, CreditCard } from 'lucide-react';
 import { PaystackButton } from 'react-paystack';
 
-const StokvelVault = ({ messages, t, onContribute }) => {
+const StokvelVault = ({ messages, onContribute }) => {
   const contributions = messages.filter(m => m.type === 'contribution');
   const total = contributions.reduce((acc, m) => acc + (parseFloat(m.metadata?.amount) || 0), 0);
   const uniqueMembers = new Set(contributions.map(m => m.sender_handle)).size;
@@ -13,7 +13,7 @@ const StokvelVault = ({ messages, t, onContribute }) => {
   const publicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
   const isTestMode = !publicKey || publicKey.startsWith('pk_test');
 
-  const handlePaymentSuccess = (reference) => {
+  const handlePaymentSuccess = (_reference) => {
     onContribute(payAmount);
     setShowPayment(false);
     setPayAmount("100");

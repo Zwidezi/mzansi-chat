@@ -1,11 +1,16 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   supabase, restoreSession, signUpUser, signInUser, signOutUser, getUser,
-  setOnlineStatus, saveOneSignalId
+  saveOneSignalId
 } from '../lib/supabaseClient';
 import OneSignal from 'react-onesignal';
 
 const AuthContext = createContext();
+
+// Module-level flag to prevent double auth initialization in React StrictMode.
+// StrictMode mounts → unmounts → remounts, causing restoreSession() to compete
+// for the Supabase navigator lock. This flag ensures initAuth() only runs once.
+let authInitStarted = false;
 
 // Helper: save OneSignal push subscription ID to user profile
 const syncOneSignalId = async (handle) => {
@@ -21,7 +26,7 @@ const syncOneSignalId = async (handle) => {
 };
 
 // Helper: getUser with timeout to prevent hanging on orphan sessions
-const getUserSafe = async (handle, userId, timeoutMs = 5000) => {
+const getUserSafe = async (handle, userId, timeoutMs = 12000) => {
   try {
     const result = await Promise.race([
       getUser(handle, userId),
@@ -31,6 +36,18 @@ const getUserSafe = async (handle, userId, timeoutMs = 5000) => {
   } catch (e) {
     console.warn('[Auth] getUserSafe failed:', e.message);
     return null;
+  }
+};
+
+// Helper: Ensure user metadata in Supabase Auth contains the handle for RLS
+const healMetadata = async (session, userProfile) => {
+  if (!session || !userProfile?.handle) return;
+  const currentMetadata = session.user.user_metadata;
+  if (!currentMetadata?.handle || currentMetadata.handle !== userProfile.handle) {
+    console.log('[Auth] Healing metadata for', userProfile.handle);
+    await supabase.auth.updateUser({
+      data: { handle: userProfile.handle, name: userProfile.name }
+    });
   }
 };
 
@@ -45,24 +62,38 @@ export const AuthProvider = ({ children }) => {
   const signupCompletedAt = useRef(0);
 
   useEffect(() => {
+    // Prevent double initialization in React StrictMode.
+    // StrictMode mounts → unmounts → remounts, causing restoreSession() to
+    // compete for the Supabase navigator lock, resulting in lock timeouts
+    // and AbortError: "Lock broken by another request with the 'steal' option".
+    if (authInitStarted) {
+      setLoading(false);
+      return;
+    }
+    authInitStarted = true;
+
+    let cancelled = false;
+
     const initAuth = async () => {
       try {
         const session = await restoreSession();
+        if (cancelled) return;
         if (session) {
           setSession(session);
           const user = await getUserSafe(null, session.user.id);
+          if (cancelled) return;
           if (user) {
             setCurrentUser(user);
+            await healMetadata(session, user);
             if (user.handle) syncOneSignalId(user.handle);
             const isEnrolled = localStorage.getItem('mzansi_pin_hash');
             setPinLocked(!!isEnrolled);
           }
-          // If user is null, session orphaned — ignore gracefully
         }
       } catch (err) {
         console.error("Auth init error:", err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
@@ -70,6 +101,7 @@ export const AuthProvider = ({ children }) => {
 
     // Listen for auth changes — skip during/shortly after signup to prevent race
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (cancelled) return;
       if (signingUp.current) {
         return;
       }
@@ -81,8 +113,10 @@ export const AuthProvider = ({ children }) => {
       setSession(session);
       if (session) {
         const user = await getUserSafe(null, session.user.id);
+        if (cancelled) return;
         if (user) {
           setCurrentUser(user);
+          await healMetadata(session, user);
           if (user.handle) syncOneSignalId(user.handle);
         }
         // Don't clear currentUser if profile lookup fails — could be transient
@@ -92,7 +126,10 @@ export const AuthProvider = ({ children }) => {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleSignUp = async (data) => {

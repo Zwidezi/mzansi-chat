@@ -1,7 +1,7 @@
 import { ArrowLeft, Bell, Settings, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const Header = ({ user, t, onLogout, showBack }) => {
+const Header = ({ user, onLogout, showBack }) => {
   const navigate = useNavigate();
 
   return (

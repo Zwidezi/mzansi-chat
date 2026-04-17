@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Fingerprint, ArrowLeft, Key, ShieldCheck, UserCircle2, X } from 'lucide-react';
-import { generateRecoveryKey, saveWebAuthnCredential, bufferToBase64, hashPinSecure } from '../../lib/supabaseClient';
+import { generateRecoveryKey, saveWebAuthnCredential, bufferToBase64 } from '../../lib/supabaseClient';
 import './AuthScreens.css';
 
 export const IdentityStep = ({ onNext, initialData, t }) => {
@@ -66,6 +66,7 @@ export const IdentityStep = ({ onNext, initialData, t }) => {
 export const RecoveryStep = ({ onNext, onBack, submitting, error, t }) => {
   const [words, setWords] = useState([]);
   useEffect(() => { setWords(generateRecoveryKey()); }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
 
   return (
     <div className="screen-container recovery-step">
@@ -186,6 +187,7 @@ export const PinSetupStep = ({ onFinish, t }) => {
     if (pin.length === 4) {
       setTimeout(() => onFinish(pin), 300);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pin]);
 
   return (

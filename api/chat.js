@@ -48,32 +48,88 @@ export default async function handler(req, res) {
   const { userMessage, chatHistory } = req.body;
 
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'Missing GEMINI_API_KEY on the server.' });
+  const groqKey = process.env.GROQ_API_KEY;
+
+  // --- Try Gemini first ---
+  if (apiKey) {
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.0-flash",
+        systemInstruction: SYSTEM_INSTRUCTION
+      });
+
+      const chat = model.startChat({
+        history: (chatHistory || []).map(msg => ({
+          role: msg.isSelf ? "user" : "model",
+          parts: [{ text: msg.text }]
+        })),
+        generationConfig: {
+          maxOutputTokens: 500,
+        },
+      });
+
+      const result = await chat.sendMessage(userMessage);
+      const response = await result.response;
+      return res.status(200).json({ text: response.text() });
+    } catch (error) {
+      console.error("Gemini API Error:", error);
+
+      // If it's a quota error, fall through to Groq
+      const errorText = error?.message?.toLowerCase() || "";
+      if (!errorText.includes("429") && !errorText.includes("quota")) {
+        return res.status(500).json({ error: 'Failed to generate response' });
+      }
+      console.log("[API] Gemini quota exceeded, trying Groq fallback");
+    }
   }
 
-  try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.0-flash",
-      systemInstruction: SYSTEM_INSTRUCTION
-    });
+  // --- Fallback: Groq (cloud, free, 14K req/day) ---
+  if (groqKey) {
+    try {
+      const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${groqKey}`
+        },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            { role: 'system', content: SYSTEM_INSTRUCTION.trim() },
+            ...(chatHistory || []).map(msg => ({
+              role: msg.isSelf ? 'user' : 'assistant',
+              content: msg.text
+            })),
+            { role: 'user', content: userMessage }
+          ],
+          max_tokens: 500,
+          temperature: 0.7
+        }),
+        signal: AbortSignal.timeout(15000)
+      });
 
-    const chat = model.startChat({
-      history: (chatHistory || []).map(msg => ({
-        role: msg.isSelf ? "user" : "model",
-        parts: [{ text: msg.text }]
-      })),
-      generationConfig: {
-        maxOutputTokens: 500,
-      },
-    });
-
-    const result = await chat.sendMessage(userMessage);
-    const response = await result.response;
-    return res.status(200).json({ text: response.text() });
-  } catch (error) {
-    console.error("Lindiwe API Error:", error);
-    return res.status(500).json({ error: 'Failed to generate response' });
+      if (groqRes.ok) {
+        const groqData = await groqRes.json();
+        const text = groqData.choices?.[0]?.message?.content;
+        if (text) {
+          console.log("[API] Response from Groq (cloud fallback)");
+          return res.status(200).json({ text });
+        }
+      }
+      console.log("[API] Groq fallback failed");
+    } catch (e) {
+      console.error("Groq fallback error:", e.message);
+    }
   }
+
+  // Neither provider worked
+  if (!apiKey && !groqKey) {
+    return res.status(500).json({ error: 'Missing GEMINI_API_KEY and GROQ_API_KEY on the server.' });
+  }
+
+  return res.status(429).json({
+    error: 'QUOTA_EXHAUSTED',
+    message: 'Eish! All AI providers are down. Please try again later.'
+  });
 }

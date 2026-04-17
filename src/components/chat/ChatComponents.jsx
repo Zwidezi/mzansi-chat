@@ -3,6 +3,7 @@ import { Play, Pause, Landmark, Video, Download } from 'lucide-react';
 
 export const VoiceNote = ({ isSelf, duration, audioUrl }) => {
   const [isPlaying, setIsPlaying] = useState(false);
+  const waveHeights = useRef([...Array(12)].map(() => Math.random() * 15 + 5));
   
   return (
     <div className="voice-bubble" style={{ alignSelf: isSelf ? 'flex-end' : 'flex-start', marginLeft: isSelf ? 'auto' : 0, marginBottom: '12px' }}>
@@ -10,8 +11,8 @@ export const VoiceNote = ({ isSelf, duration, audioUrl }) => {
         {isPlaying ? <Pause size={18} fill="white" /> : <Play size={18} fill="white" />}
       </button>
       <div className="waveform">
-        {[1,2,3,4,5,6,7,8,9,10,11,12].map(i => (
-          <div key={i} className={`wave-bar ${isPlaying ? 'active' : ''}`} style={{ height: `${Math.random() * 15 + 5}px` }} />
+        {waveHeights.current.map((h, i) => (
+          <div key={i} className={`wave-bar ${isPlaying ? 'active' : ''}`} style={{ height: `${h}px` }} />
         ))}
       </div>
       <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{duration || '0:12'}</span>

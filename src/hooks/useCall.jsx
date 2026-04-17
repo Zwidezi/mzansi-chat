@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import Peer from 'peerjs';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, savePeerId } from '../lib/supabaseClient';
 
 const CallContext = createContext();
 
@@ -22,10 +22,18 @@ export const CallProvider = ({ children }) => {
   const activeCallRef = useRef(null);
   const timerRef = useRef(null);
   const channelRef = useRef(null);
+  const cleanupRef = useRef(null);
+  const endCallRef = useRef(null);
 
   // Initialize PeerJS when user logs in
   useEffect(() => {
     if (!userHandle) return;
+
+    // If a peer already exists for this handle (React StrictMode remount),
+    // reuse it instead of creating a new one that would conflict.
+    if (peerRef.current && !peerRef.current.destroyed) {
+      return;
+    }
 
     // STUN + TURN servers — TURN is essential for symmetric NAT (common on SA mobile networks)
     const iceServers = [
@@ -40,14 +48,18 @@ export const CallProvider = ({ children }) => {
       iceServers.push({ urls: turnUrl, username: turnUser, credential: turnPass });
     }
 
-    const peer = new Peer(`mzansi-${userHandle}`, {
-      debug: 0,
+    const peerIdBase = `mzansi-${userHandle}`;
+    const peerId = `${peerIdBase}-${Math.floor(Math.random() * 1000)}`;
+
+    const peer = new Peer(peerId, {
+      debug: 1,
       config: { iceServers }
     });
 
     peer.on('open', (id) => {
       console.log('[Call] PeerJS connected:', id);
       setPeerId(id);
+      savePeerId(userHandle, id); // Sync to DB
     });
 
     // Handle incoming PeerJS media call
@@ -65,14 +77,19 @@ export const CallProvider = ({ children }) => {
 
       incoming.on('close', () => {
         console.log('[Call] Incoming call closed');
-        cleanup();
+        if (cleanupRef.current) cleanupRef.current();
       });
     });
 
     peer.on('error', (err) => {
+      // Suppress expected errors from StrictMode cleanup destroying peer before connected
+      if (err.type === 'browser-incompatible' || err.type === 'network') {
+        console.warn('[Call] PeerJS non-critical error:', err.type);
+        return;
+      }
       console.error('[Call] PeerJS Error:', err);
       if (err.type === 'peer-unavailable') {
-        cleanup();
+        if (cleanupRef.current) cleanupRef.current();
       }
     });
 
@@ -99,7 +116,23 @@ export const CallProvider = ({ children }) => {
     channelRef.current = channel;
 
     return () => {
-      peer.destroy();
+      // Only destroy the peer if it's still the current one.
+      // In StrictMode, the cleanup runs before the remount's effect,
+      // so we check if the ref still points to this peer instance.
+      if (peerRef.current === peer) {
+        if (peer.open) {
+          peer.destroy();
+        } else {
+          // Peer hasn't connected yet — disconnect gracefully to avoid
+          // "WebSocket is closed before the connection is established" errors
+          peer.disconnect();
+          // Schedule destruction for after the connection attempt settles
+          setTimeout(() => {
+            if (!peer.destroyed) peer.destroy();
+          }, 2000);
+        }
+        peerRef.current = null;
+      }
       channel.unsubscribe();
     };
   }, [userHandle]);
@@ -127,8 +160,8 @@ export const CallProvider = ({ children }) => {
       activeCallRef.current.close();
       activeCallRef.current = null;
     }
-    if (localStream) {
-      localStream.getTracks().forEach(track => track.stop());
+    if (cleanupRef.current?.localStream) {
+      cleanupRef.current.localStream.getTracks().forEach(track => track.stop());
     }
     setLocalStream(null);
     setRemoteStream(null);
@@ -137,6 +170,10 @@ export const CallProvider = ({ children }) => {
     setCallDuration(0);
     setIsMinimized(false);
     setFacingMode('user');
+  }, []);
+
+  useEffect(() => {
+    cleanupRef.current = { localStream };
   }, [localStream]);
 
   const getMedia = async (video = true) => {
@@ -168,6 +205,15 @@ export const CallProvider = ({ children }) => {
       return;
     }
 
+    // Lookup recipient's CURRENT Peer ID from database
+    const { data: targetProfile } = await supabase
+      .from('users_public')
+      .select('peer_id')
+      .eq('handle', targetHandle.toLowerCase())
+      .single();
+
+    const targetId = targetProfile?.peer_id || `mzansi-${targetHandle.toLowerCase()}`;
+
     // Signal the other user via Supabase so they know a call is coming
     await supabase.channel(`call-signal-${targetHandle}`).send({
       type: 'broadcast',
@@ -175,7 +221,6 @@ export const CallProvider = ({ children }) => {
       payload: { from: userHandle, video }
     });
 
-    const targetId = `mzansi-${targetHandle}`;
     const outgoing = peerRef.current.call(targetId, stream, {
       metadata: { video, from: userHandle }
     });
@@ -196,12 +241,12 @@ export const CallProvider = ({ children }) => {
 
     outgoing.on('close', () => {
       console.log('[Call] Outgoing call closed');
-      cleanup();
+      if (cleanupRef.current) cleanupRef.current();
     });
 
     outgoing.on('error', (err) => {
       console.error('[Call] Call error:', err);
-      cleanup();
+      if (cleanupRef.current) cleanupRef.current();
     });
 
     activeCallRef.current = outgoing;
@@ -210,10 +255,10 @@ export const CallProvider = ({ children }) => {
     setTimeout(() => {
       if (callState === 'calling') {
         console.log('[Call] No answer, timing out');
-        endCall();
+        if (endCallRef.current) endCallRef.current();
       }
     }, 30000);
-  }, [callState, userHandle, cleanup]);
+  }, [callState, userHandle]);
 
   const answerCall = useCallback(async () => {
     if (!activeCallRef.current || callState !== 'ringing') return;
@@ -232,9 +277,9 @@ export const CallProvider = ({ children }) => {
 
     activeCallRef.current.on('error', (err) => {
       console.error('[Call] Answer error:', err);
-      cleanup();
+      if (cleanupRef.current) cleanupRef.current();
     });
-  }, [callState, callType, cleanup]);
+  }, [callState, callType]);
 
   const endCall = useCallback(() => {
     // Notify remote user
@@ -245,8 +290,10 @@ export const CallProvider = ({ children }) => {
         payload: { from: userHandle }
       });
     }
-    cleanup();
-  }, [remoteHandle, userHandle, cleanup]);
+    if (cleanupRef.current) cleanupRef.current();
+  }, [remoteHandle, userHandle]);
+
+  endCallRef.current = endCall;
 
   const rejectCall = useCallback(() => {
     if (remoteHandle) {
@@ -256,8 +303,8 @@ export const CallProvider = ({ children }) => {
         payload: { from: userHandle }
       });
     }
-    cleanup();
-  }, [remoteHandle, userHandle, cleanup]);
+    if (cleanupRef.current) cleanupRef.current();
+  }, [remoteHandle, userHandle]);
 
   const toggleMute = useCallback(() => {
     if (localStream) {

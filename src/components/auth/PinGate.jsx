@@ -3,7 +3,7 @@ import { Fingerprint, X } from 'lucide-react';
 import { getWebAuthnCredentials } from '../../lib/supabaseClient';
 import './AuthScreens.css';
 
-export const PinGate = ({ handle, onLogin, onReset, authError, t }) => {
+export const PinGate = ({ handle, onLogin, onReset, authError }) => {
   const [pin, setPin] = useState("");
   const [attemptingBio, setAttemptingBio] = useState(false);
   
@@ -59,6 +59,7 @@ export const PinGate = ({ handle, onLogin, onReset, authError, t }) => {
 
   useEffect(() => {
     triggerBiometric();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const initial = handle ? handle[0].toUpperCase() : "?";

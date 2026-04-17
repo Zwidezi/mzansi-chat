@@ -21,7 +21,10 @@ import { validatePaymentAmount } from '../lib/moderation';
 const useLongPress = (callback, ms = 500) => {
   const timerRef = useRef(null);
   const callbackRef = useRef(callback);
-  callbackRef.current = callback;
+
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
 
   const start = useCallback((e) => {
     e.preventDefault();
@@ -204,20 +207,42 @@ const ChatScreen = () => {
     setInputText("");
 
     if (isAI) {
-      // Persist user's message first so conversations reload correctly
-      await sendMessage(id, currentUser.handle, currentUser.name, userMessage);
-      const aiResponse = await getLindiweResponse(userMessage, messages);
-      await sendMessage(id, 'lindiwe', 'Lindiwe (AI)', aiResponse);
+      try {
+        // Persist user's message first so conversations reload correctly
+        const { error: sendErr } = await sendMessage(id, currentUser.handle, currentUser.name, userMessage);
+        if (sendErr) {
+          showToast(sendErr.message || "Failed to send message. Eish!");
+          setInputText(userMessage);
+          return;
+        }
+
+        const aiResponse = await getLindiweResponse(userMessage, messages);
+        await sendMessage(id, 'lindiwe', 'Lindiwe (AI)', aiResponse);
+      } catch (err) {
+        console.error("[Chat] AI messaging failed:", err);
+        showToast("Eish! Lindiwe's frequency is a bit noisy. Syncing... Sharp!");
+        setInputText(userMessage);
+      }
       return;
     }
 
-    const { message, error } = await sendMessage(
+    const { error } = await sendMessage(
       id,
       currentUser.handle,
       currentUser.name,
       userMessage
     );
-    if (error) setInputText(userMessage); // Restore on failure
+
+    if (error) {
+      console.error("[Chat] Send message failed:", error);
+      // Differentiate between RLS (403) and other errors
+      const errorMsg = error.code === '42501' 
+        ? "Permission Denied! RLS check failed. Please refresh. Eish!" 
+        : (error.message || "Message failed to send. Check your connection!");
+        
+      showToast(errorMsg);
+      setInputText(userMessage); // Restore on failure
+    }
   };
 
   const handleMediaUpload = async (e) => {
@@ -254,7 +279,7 @@ const ChatScreen = () => {
         borderBottom: '1px solid var(--border)',
         background: 'var(--surface)',
         backdropFilter: 'blur(20px)',
-        webkitBackdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
         position: 'sticky',
         top: 0,
         zIndex: 100,

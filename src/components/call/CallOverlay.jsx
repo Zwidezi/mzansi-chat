@@ -263,7 +263,8 @@ const CallOverlay = () => {
     callState, callType, remoteHandle,
     localStream, remoteStream, callDuration,
     answerCall, endCall, rejectCall,
-    toggleMute, toggleCamera
+    toggleMute, toggleCamera,
+    isMinimized, switchCamera, toggleMinimize
   } = useCall();
 
   if (callState === 'idle') return null;

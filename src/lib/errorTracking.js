@@ -47,7 +47,18 @@ const setupGlobalErrorHandler = () => {
     });
 
     window.addEventListener('unhandledrejection', (event) => {
-        logError(new Error(event.reason), { type: 'unhandled_promise' });
+        // Suppress expected AbortError from Supabase navigator lock contention
+        // in React StrictMode — this is a known gotrue-js behavior, not a real error
+        const reason = event.reason;
+        const isAbortError = reason?.name === 'AbortError' ||
+            String(reason?.message || '').includes('Lock broken') ||
+            String(reason?.message || '').includes('steal');
+        if (isAbortError) {
+            console.warn('[ErrorTracker] Suppressed expected AbortError (lock contention):', reason?.message || reason);
+            event.preventDefault(); // Prevent default console.error
+            return;
+        }
+        logError(new Error(reason), { type: 'unhandled_promise' });
     });
 };
 
