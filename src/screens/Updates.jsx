@@ -233,15 +233,15 @@ const StatusCreator = ({ onUpload, onClose }) => {
     reader.readAsDataURL(file);
   };
 
-  // Simulated progress that accelerates then slows near the end
+  // Simulated progress — slow enough for mobile data
   const startProgress = () => {
     setProgress(0);
     let current = 0;
     progressTimer.current = setInterval(() => {
-      current += current < 60 ? 3 : current < 85 ? 1 : 0.2;
-      if (current > 95) current = 95; // Never reach 100 until done
-      setProgress(Math.min(current, 95));
-    }, 200);
+      current += current < 30 ? 1.5 : current < 60 ? 0.8 : current < 85 ? 0.3 : 0.1;
+      if (current > 92) current = 92; // Never reach 100 until done
+      setProgress(Math.min(current, 92));
+    }, 300);
   };
 
   const stopProgress = (success) => {
@@ -258,23 +258,18 @@ const StatusCreator = ({ onUpload, onClose }) => {
     startProgress();
 
     try {
-      // Timeout: 30s for the whole operation
-      const uploadPromise = onUpload(mediaFile, { 
+      // Phase transitions for visual feedback
+      if (mediaFile) {
+        setTimeout(() => setUploadPhase('uploading'), 2000);
+      }
+      setTimeout(() => setUploadPhase('saving'), mediaFile ? 15000 : 1000);
+
+      // No timeout — let the upload complete on its own
+      const result = await onUpload(mediaFile, { 
         caption, 
         audioFile, 
         bgColor: isTextOnly ? bgColor : null 
       });
-
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Upload timed out. Check your connection and try again.')), 30000)
-      );
-
-      if (mediaFile) {
-        setTimeout(() => setUploadPhase('uploading'), 1000);
-      }
-      setTimeout(() => setUploadPhase('saving'), mediaFile ? 5000 : 500);
-
-      const result = await Promise.race([uploadPromise, timeoutPromise]);
       
       // Check if the parent returned an error
       if (result?.error) {
