@@ -4,7 +4,9 @@ import BottomNav from './BottomNav';
 import { useAuth } from '../../context/AuthContext';
 import { TRANSLATIONS } from '../../constants/translations';
 import { useState, useEffect, useRef } from 'react';
-import { setOnlineStatus } from '../../lib/supabaseClient';
+import { setOnlineStatus, subscribeToMessages } from '../../lib/supabaseClient';
+
+const BEEP_URL = "https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3";
 
 const MainShell = () => {
   const { currentUser, handleLogout } = useAuth();
@@ -12,6 +14,53 @@ const MainShell = () => {
   const [lang] = useState(localStorage.getItem('mzansi_lang') || 'English');
   const t = TRANSLATIONS[lang];
   const heartbeatRef = useRef(null);
+  const audioRef = useRef(new Audio(BEEP_URL));
+
+  // Notification Permission
+  useEffect(() => {
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  // Global Message Listener (for beeping/notifications)
+  useEffect(() => {
+    if (!currentUser?.handle) return;
+
+    // Listen to ALL messages
+    const subscription = subscribeToMessages(null, (newMsg) => {
+      // 1. Ignore if message is from us
+      if (newMsg.sender_handle === currentUser.handle) return;
+
+      // 2. Check if we are currently looking at this specific chat
+      const currentChatIdFromUrl = location.pathname.startsWith('/chat/') ? location.pathname.split('/')[2] : null;
+      if (newMsg.chat_id === currentChatIdFromUrl) return;
+
+      // 3. Play sound (Beep)
+      // Browsers usually block auto-play until user interaction, 
+      // but since the user clicks to navigate/send messages, it should work.
+      audioRef.current.play().catch(e => console.warn('[Notifications] Audio play blocked:', e));
+
+      // 4. Show Browser Notification
+      if (Notification.permission === 'granted') {
+        const notification = new Notification(`Message from @${newMsg.sender_handle}`, {
+          body: newMsg.type === 'text' ? newMsg.content : `Sent a ${newMsg.type}`,
+          icon: '/favicon.svg', // Fallback to app icon
+          tag: newMsg.chat_id // Prevent multiple notifications for same chat
+        });
+
+        notification.onclick = () => {
+          window.focus();
+          // Navigate to the chat if possible (this needs navigate hook, but we are inside MainShell)
+          // For now just focus window
+        };
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [currentUser?.handle, location.pathname]);
 
   // Presence tracking: online/offline + last_seen heartbeat
   useEffect(() => {
@@ -87,3 +136,4 @@ const MainShell = () => {
 };
 
 export default MainShell;
+
