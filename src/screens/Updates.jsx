@@ -176,6 +176,8 @@ const StatusViewer = ({ statuses, userHandle, onClose }) => {
   );
 };
 
+const MAX_STATUS_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
 const StatusCreator = ({ onUpload, onClose }) => {
   const [mediaFile, setMediaFile] = useState(null);
   const [mediaPreview, setMediaPreview] = useState(null);
@@ -183,14 +185,27 @@ const StatusCreator = ({ onUpload, onClose }) => {
   const [caption, setCaption] = useState("");
   const [bgColor, setBgColor] = useState("bg-dark-slate");
   const [isTextOnly, setIsTextOnly] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadPhase, setUploadPhase] = useState(""); // 'compressing', 'uploading', 'saving', 'done'
+  const [uploadError, setUploadError] = useState(null);
+  const [progress, setProgress] = useState(0);
 
   const mediaRef = useRef();
   const audioRef = useRef();
+  const progressTimer = useRef(null);
 
   const handleMediaPick = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    setUploadError(null);
+
+    // File size check
+    if (file.size > MAX_STATUS_FILE_SIZE) {
+      const sizeMB = (file.size / 1024 / 1024).toFixed(1);
+      setUploadError(`File too large (${sizeMB}MB). Max is 10MB.`);
+      return;
+    }
+
     setMediaFile(file);
     setIsTextOnly(false);
     
@@ -199,30 +214,114 @@ const StatusCreator = ({ onUpload, onClose }) => {
     reader.readAsDataURL(file);
   };
 
+  // Simulated progress that accelerates then slows near the end
+  const startProgress = () => {
+    setProgress(0);
+    let current = 0;
+    progressTimer.current = setInterval(() => {
+      current += current < 60 ? 3 : current < 85 ? 1 : 0.2;
+      if (current > 95) current = 95; // Never reach 100 until done
+      setProgress(Math.min(current, 95));
+    }, 200);
+  };
+
+  const stopProgress = (success) => {
+    clearInterval(progressTimer.current);
+    if (success) {
+      setProgress(100);
+    }
+  };
+
   const handleUpload = async () => {
-    setLoading(true);
-    await onUpload(mediaFile, { 
-      caption, 
-      audioFile, 
-      bgColor: isTextOnly ? bgColor : null 
-    });
-    setLoading(false);
-    onClose();
+    setUploading(true);
+    setUploadError(null);
+    setUploadPhase(mediaFile ? 'compressing' : 'saving');
+    startProgress();
+
+    try {
+      // Timeout: 30s for the whole operation
+      const uploadPromise = onUpload(mediaFile, { 
+        caption, 
+        audioFile, 
+        bgColor: isTextOnly ? bgColor : null 
+      });
+
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Upload timed out. Check your connection and try again.')), 30000)
+      );
+
+      if (mediaFile) {
+        setTimeout(() => setUploadPhase('uploading'), 1000);
+      }
+      setTimeout(() => setUploadPhase('saving'), mediaFile ? 5000 : 500);
+
+      const result = await Promise.race([uploadPromise, timeoutPromise]);
+      
+      // Check if the parent returned an error
+      if (result?.error) {
+        throw new Error(result.error);
+      }
+
+      stopProgress(true);
+      setUploadPhase('done');
+
+      // Brief success flash before closing
+      await new Promise(r => setTimeout(r, 600));
+      onClose();
+    } catch (err) {
+      stopProgress(false);
+      setUploadError(err.message || 'Upload failed. Please try again.');
+      setUploading(false);
+      setUploadPhase('');
+      setProgress(0);
+    }
+  };
+
+  const phaseLabel = {
+    compressing: '📦 Compressing...',
+    uploading: '☁️ Uploading...',
+    saving: '💾 Saving...',
+    done: '✅ Posted!'
   };
 
   return (
     <div className="status-creator-overlay">
       <header style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: 'white' }}><X size={28} /></button>
+        <button onClick={uploading ? undefined : onClose} style={{ background: 'transparent', border: 'none', color: 'white', opacity: uploading ? 0.3 : 1 }}><X size={28} /></button>
         <h2 style={{ fontSize: '1.2rem', fontWeight: '900', color: 'white' }}>New Status</h2>
         <button 
           onClick={handleUpload} 
-          disabled={loading || (!mediaFile && !caption)}
-          style={{ background: 'var(--primary)', color: 'white', border: 'none', borderRadius: '12px', padding: '8px 20px', fontWeight: '800', opacity: (loading || (!mediaFile && !caption)) ? 0.5 : 1 }}
+          disabled={uploading || (!mediaFile && !caption)}
+          style={{ background: uploading ? 'rgba(14,192,223,0.4)' : 'var(--primary)', color: 'white', border: 'none', borderRadius: '12px', padding: '8px 20px', fontWeight: '800', opacity: (uploading || (!mediaFile && !caption)) ? 0.6 : 1, transition: 'all 0.2s' }}
         >
-          {loading ? '...' : <Send size={20} />}
+          {uploading ? <RefreshCw size={18} className="biometric-pulse" /> : <Send size={20} />}
         </button>
       </header>
+
+      {/* Upload Progress Bar */}
+      {uploading && (
+        <div style={{ padding: '0 20px' }}>
+          <div style={{ background: 'rgba(255,255,255,0.1)', borderRadius: '8px', height: '6px', overflow: 'hidden', marginBottom: '8px' }}>
+            <div style={{ 
+              height: '100%', 
+              background: uploadPhase === 'done' ? '#22c55e' : 'var(--primary-gradient)', 
+              borderRadius: '8px', 
+              width: `${progress}%`, 
+              transition: 'width 0.3s ease-out' 
+            }} />
+          </div>
+          <p style={{ textAlign: 'center', fontSize: '0.8rem', fontWeight: '700', color: uploadPhase === 'done' ? '#22c55e' : 'var(--primary)', marginBottom: '8px' }}>
+            {phaseLabel[uploadPhase] || 'Processing...'}
+          </p>
+        </div>
+      )}
+
+      {/* Error Display */}
+      {uploadError && (
+        <div style={{ margin: '0 20px 12px', padding: '12px 16px', borderRadius: '12px', background: 'rgba(239,68,68,0.15)', color: '#f87171', fontSize: '0.85rem', fontWeight: '600', textAlign: 'center' }}>
+          {uploadError}
+        </div>
+      )}
 
       <div className={`status-preview-area ${isTextOnly ? bgColor : ''}`}>
         {!isTextOnly && mediaPreview ? (
@@ -249,6 +348,7 @@ const StatusCreator = ({ onUpload, onClose }) => {
             if (!mediaFile) setIsTextOnly(true);
           }}
           maxLength={280}
+          disabled={uploading}
         />
       </div>
 
@@ -256,7 +356,8 @@ const StatusCreator = ({ onUpload, onClose }) => {
         <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
           <button 
             onClick={() => mediaRef.current?.click()} 
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', background: 'transparent', border: 'none', color: mediaFile ? 'var(--primary)' : 'white' }}
+            disabled={uploading}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', background: 'transparent', border: 'none', color: mediaFile ? 'var(--primary)' : 'white', opacity: uploading ? 0.4 : 1 }}
           >
             <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <ImageIcon size={24} />
@@ -266,7 +367,8 @@ const StatusCreator = ({ onUpload, onClose }) => {
 
           <button 
             onClick={() => audioRef.current?.click()} 
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', background: 'transparent', border: 'none', color: audioFile ? 'var(--primary)' : 'white' }}
+            disabled={uploading}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', background: 'transparent', border: 'none', color: audioFile ? 'var(--primary)' : 'white', opacity: uploading ? 0.4 : 1 }}
           >
             <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Music size={24} />
@@ -279,7 +381,8 @@ const StatusCreator = ({ onUpload, onClose }) => {
               setIsTextOnly(!isTextOnly);
               if (!isTextOnly) { setMediaFile(null); setMediaPreview(null); }
             }} 
-            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', background: 'transparent', border: 'none', color: isTextOnly ? 'var(--primary)' : 'white' }}
+            disabled={uploading}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', background: 'transparent', border: 'none', color: isTextOnly ? 'var(--primary)' : 'white', opacity: uploading ? 0.4 : 1 }}
           >
             <div style={{ width: '48px', height: '48px', borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Type size={24} />
@@ -294,7 +397,7 @@ const StatusCreator = ({ onUpload, onClose }) => {
                <div 
                  key={g} 
                  className={`gradient-swatch ${g} ${bgColor === g ? 'active' : ''}`} 
-                 onClick={() => setBgColor(g)}
+                 onClick={() => !uploading && setBgColor(g)}
                />
              ))}
           </div>
@@ -335,12 +438,22 @@ const Updates = () => {
   }, []);
 
   const handleStatusUpload = async (file, options) => {
-    if (!currentUser) return;
-    setLoading(true);
-    await uploadStatusFile(currentUser.handle, file, options);
-    const { data: statusData } = await getActiveStatuses();
-    setGroupedStatuses(statusData || {});
-    setLoading(false);
+    if (!currentUser) return { error: 'Not logged in' };
+    try {
+      const result = await uploadStatusFile(currentUser.handle, file, options);
+      if (result?.error) {
+        console.error('[Status] Upload failed:', result.error);
+        return { error: typeof result.error === 'string' ? result.error : 'Upload failed. Try again.' };
+      }
+      // Refresh statuses in background (don't block)
+      getActiveStatuses().then(({ data: statusData }) => {
+        setGroupedStatuses(statusData || {});
+      });
+      return { success: true };
+    } catch (err) {
+      console.error('[Status] Upload error:', err);
+      return { error: err.message || 'Upload failed. Try again.' };
+    }
   };
 
   const handleJoin = async (commId) => {
