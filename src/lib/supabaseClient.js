@@ -113,13 +113,20 @@ const hashWords = async (words) => {
 // Helper: wait for Supabase auth lock to settle
 const settleAuth = (ms = 500) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Helper: check if an error is a known non-fatal navigator lock error
+const isLockError = (err) => {
+  const msg = typeof err === 'string' ? err : (err?.message || '');
+  return msg.includes('Lock') || msg.includes('lock') || msg.includes('AbortError') || msg.includes('stole') || msg.includes('released');
+};
+
 // Helper: retry an async operation
 const retryOp = async (fn, retries = 3, delay = 500) => {
   for (let i = 0; i < retries; i++) {
     const result = await fn();
     if (!result.error) return result;
     // Only retry on lock/abort errors
-    if (result.error.message?.includes('Lock') || result.error.message?.includes('AbortError')) {
+    const errMsg = typeof result.error === 'string' ? result.error : (result.error.message || '');
+    if (isLockError(errMsg)) {
       console.warn(`[Retry] Attempt ${i + 1} failed with lock error, retrying in ${delay}ms...`);
       await settleAuth(delay);
       continue;
@@ -127,6 +134,29 @@ const retryOp = async (fn, retries = 3, delay = 500) => {
     return result; // Non-lock error, don't retry
   }
   return { error: 'Signup failed after retries. Please try again.' };
+};
+
+// Helper: sign in anonymously with retry for lock contention
+const signInAnonymouslyWithRetry = async (maxRetries = 3) => {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const { data, error } = await supabase.auth.signInAnonymously();
+      if (error && isLockError(error.message)) {
+        console.warn(`[Auth] Lock error on attempt ${i + 1}, retrying...`);
+        await settleAuth(800 * (i + 1));
+        continue;
+      }
+      return { data, error };
+    } catch (err) {
+      if (isLockError(err.message || err)) {
+        console.warn(`[Auth] Lock exception on attempt ${i + 1}, retrying...`);
+        await settleAuth(800 * (i + 1));
+        continue;
+      }
+      throw err;
+    }
+  }
+  return { data: null, error: { message: 'Authentication timed out. Please try again.' } };
 };
 
 // Sign Up — anonymous auth + public profile
@@ -170,11 +200,14 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
     console.log('[Signup] Detected orphaned session, signing out to start fresh:', existingSession.user.id);
     try { await supabase.auth.signOut(); } catch (_) { /* best effort */ }
 
-    // Create a new anonymous session
-    const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
+    // Wait for auth lock to fully release before creating a new session
+    await settleAuth(1000);
+
+    // Create a new anonymous session (with retry for lock contention)
+    const { data: authData, error: authError } = await signInAnonymouslyWithRetry();
     if (authError) {
       console.error('[Signup] Auth error after orphan cleanup:', authError);
-      return { error: authError.message };
+      return { error: isLockError(authError.message) ? 'Please try again in a moment.' : authError.message };
     }
     userId = authData.user?.id;
     authSession = authData.session;
@@ -183,11 +216,11 @@ export const signUpUser = async ({ handle, name, profilePic, recoveryWords, refe
     }
     console.log('[Signup] Fresh session created after orphan cleanup:', userId);
   } else {
-    // No existing session — create a new anonymous one
-    const { data: authData, error: authError } = await supabase.auth.signInAnonymously();
+    // No existing session — create a new anonymous one (with retry for lock contention)
+    const { data: authData, error: authError } = await signInAnonymouslyWithRetry();
     if (authError) {
       console.error('[Signup] Auth error:', authError);
-      return { error: authError.message };
+      return { error: isLockError(authError.message) ? 'Please try again in a moment.' : authError.message };
     }
     userId = authData.user?.id;
     authSession = authData.session;

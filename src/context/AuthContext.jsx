@@ -145,8 +145,16 @@ export const AuthProvider = ({ children }) => {
       setPinLocked(false);
       return { success: true };
     } catch (err) {
-      setAuthError(err.message);
-      return { success: false, error: err.message };
+      const msg = err.message || '';
+      // Suppress known non-fatal Supabase navigator lock errors on mobile
+      const isLockErr = msg.includes('Lock') || msg.includes('lock') || msg.includes('stole') || msg.includes('released') || msg.includes('AbortError');
+      if (isLockErr) {
+        console.warn('[Auth] Suppressed lock error:', msg);
+        // Don't show to user — these are transient
+        return { success: false, error: 'Please try again.' };
+      }
+      setAuthError(msg);
+      return { success: false, error: msg };
     } finally {
       signingUp.current = false;
       signupCompletedAt.current = Date.now();
