@@ -88,11 +88,54 @@ const ChatScreen = () => {
   const [selectedBank, setSelectedBank] = useState(null);
   const [transferAmount, setTransferAmount] = useState("50");
   const [paymentStep, setPaymentStep] = useState('list'); // 'list' | 'amount'
+  const [otherUserStatus, setOtherUserStatus] = useState({ is_online: false, last_seen: null });
 
   const scrollRef = useRef();
   const fileInputRef = useRef();
+  const presenceInterval = useRef(null);
   const MESSAGE_PAGE_SIZE = 50;
   const MAX_MESSAGE_LENGTH = 2000;
+
+  // Format last seen (WhatsApp-style)
+  const formatLastSeen = (lastSeenStr) => {
+    if (!lastSeenStr) return '';
+    const date = new Date(lastSeenStr);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+
+    // If last seen within 2 minutes, consider them online (heartbeat window)
+    if (diffMins < 3) return 'online';
+
+    const hours = date.getHours().toString().padStart(2, '0');
+    const mins = date.getMinutes().toString().padStart(2, '0');
+    const timeStr = `${hours}:${mins}`;
+
+    const isToday = date.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+
+    if (isToday) return `last seen today at ${timeStr}`;
+    if (isYesterday) return `last seen yesterday at ${timeStr}`;
+
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    return `last seen ${day}/${month} at ${timeStr}`;
+  };
+
+  const getPresenceText = () => {
+    if (isAI) return 'Thinking in Ubuntu';
+    if (isGroup) return '';
+    if (otherUserStatus.is_online) return 'online';
+    return formatLastSeen(otherUserStatus.last_seen);
+  };
+
+  const presenceColor = () => {
+    if (isAI) return 'var(--primary)';
+    const text = getPresenceText();
+    return text === 'online' ? 'var(--success)' : 'var(--text-muted)';
+  };
 
   const showToast = (msg) => {
     setToast(msg);
@@ -100,18 +143,18 @@ const ChatScreen = () => {
   };
 
   // Determine the other user's handle for DM calls
-  const getCallTarget = () => {
-    // New format: handle1_handle2
+  const getOtherHandle = () => {
     if (id.includes('_') && id.split('_').length === 2) {
       const parts = id.split('_');
       return parts.find(h => h !== currentUser?.handle?.toLowerCase()) || null;
     }
-    // Legacy format: just a handle
     if (!isGroup && !isAI && isNaN(id)) {
       return id;
     }
     return null;
   };
+
+  const getCallTarget = () => getOtherHandle();
 
   const handleVoiceCall = () => {
     const target = getCallTarget();
@@ -131,8 +174,19 @@ const ChatScreen = () => {
     makeCall(target, true);
   };
 
+  // Fetch other user's presence
+  const fetchPresence = async (handle) => {
+    if (!handle) return;
+    const user = await getUser(handle);
+    if (user) {
+      setOtherUserStatus({ is_online: user.is_online, last_seen: user.last_seen });
+    }
+  };
+
   useEffect(() => {
     const initChat = async () => {
+      let otherHandle = null;
+
       // Determine if it's a DM or Group
       if (id === 'lindiwe') {
         setChatName("Lindiwe (AI)");
@@ -140,15 +194,20 @@ const ChatScreen = () => {
       } else if (id.includes('_') && id.split('_').length === 2) {
         // DM with chat_id format: "handle1_handle2"
         const parts = id.split('_');
-        const otherHandle = parts.find(h => h !== currentUser?.handle?.toLowerCase());
+        otherHandle = parts.find(h => h !== currentUser?.handle?.toLowerCase());
         if (otherHandle) {
           const user = await getUser(otherHandle);
           setChatName(user?.name || `@${otherHandle}`);
+          if (user) setOtherUserStatus({ is_online: user.is_online, last_seen: user.last_seen });
         }
       } else if (isNaN(id)) {
         // Legacy: simple handle for DM
+        otherHandle = id;
         const user = await getUser(id);
-        if (user) setChatName(user.name);
+        if (user) {
+          setChatName(user.name);
+          setOtherUserStatus({ is_online: user.is_online, last_seen: user.last_seen });
+        }
       } else {
         // Numeric ID for group/community
         setIsGroup(true);
@@ -159,6 +218,11 @@ const ChatScreen = () => {
       setMessages(msgs);
       setHasMore(msgs.length >= MESSAGE_PAGE_SIZE);
       setLoading(false);
+
+      // Poll presence every 30s for DMs
+      if (otherHandle) {
+        presenceInterval.current = setInterval(() => fetchPresence(otherHandle), 30000);
+      }
     };
 
     initChat();
@@ -168,7 +232,10 @@ const ChatScreen = () => {
       setMessages(prev => [...prev, newMsg]);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      if (presenceInterval.current) clearInterval(presenceInterval.current);
+    };
   }, [id]);
 
   // Load older messages (infinite scroll)
@@ -291,7 +358,9 @@ const ChatScreen = () => {
           </button>
           <div style={{ minWidth: 0, overflow: 'hidden', flex: 1 }}>
             <div className="item-name" style={{ fontSize: '1.2rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: '850' }}>{chatName}</div>
-            <div style={{ fontSize: '0.75rem', color: isAI ? 'var(--primary)' : 'var(--success)', fontWeight: '700' }}>{isAI ? 'Thinking in Ubuntu' : 'online'}</div>
+            {(getPresenceText()) && (
+              <div style={{ fontSize: '0.75rem', color: presenceColor(), fontWeight: '700' }}>{getPresenceText()}</div>
+            )}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '18px', flexShrink: 0, marginLeft: '12px' }}>

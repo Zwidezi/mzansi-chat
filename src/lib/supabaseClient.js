@@ -499,8 +499,10 @@ export const updateUser = async (handle, updates) => {
 
 // Set user online status
 export const setOnlineStatus = async (handle, isOnline) => {
-  const updates = { is_online: isOnline };
-  if (isOnline) updates.last_seen = new Date().toISOString();
+  const updates = { 
+    is_online: isOnline, 
+    last_seen: new Date().toISOString() 
+  };
 
   await supabase
     .from('users')
