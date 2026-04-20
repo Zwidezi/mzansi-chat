@@ -12,6 +12,9 @@ const Profile = () => {
   const [ghostMode, setGhostMode] = useState(() => {
     return localStorage.getItem('mzansi_ghost_mode') === 'true';
   });
+  const [dataSaving, setDataSaving] = useState(() => {
+    return localStorage.getItem('mzansi_data_saving') !== 'false'; // Default to true
+  });
 
   const handleProfilePicChange = async (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -94,6 +97,23 @@ const Profile = () => {
            </div>
            <label className="switch">
               <input type="checkbox" checked={ghostMode} onChange={(e) => toggleGhostMode(e.target.checked)} />
+              <span className="slider"></span>
+           </label>
+        </div>
+
+        <div className="setting-item">
+           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <Zap size={20} color="var(--primary)" />
+              <div>
+                 <div style={{ fontWeight: '700', fontSize: '0.9rem' }}>Data Saving Mode</div>
+                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Ubuntu "Zero Data" optimization</div>
+              </div>
+           </div>
+           <label className="switch">
+              <input type="checkbox" checked={dataSaving} onChange={(e) => {
+                setDataSaving(e.target.checked);
+                localStorage.setItem('mzansi_data_saving', String(e.target.checked));
+              }} />
               <span className="slider"></span>
            </label>
         </div>

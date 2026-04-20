@@ -1,9 +1,9 @@
 const fs = require('node:fs');
 const https = require('node:https');
 
-const TOKEN = 'sbp_2e312e0ae2b107136da3f9b243c232316f814d36';
+const TOKEN = process.env.SUPABASE_ACCESS_TOKEN;
 const PROJECT_REF = 'uweiptzbtpojnwyozdzf';
-const SQL_PATH = 'production_consolidated_fix.sql';
+const SQL_PATH = 'production_master_sync.sql';
 
 if (!fs.existsSync(SQL_PATH)) {
   console.error(`[Error] SQL file not found: ${SQL_PATH}`);
@@ -20,7 +20,7 @@ const data = JSON.stringify({
 const options = {
   hostname: 'api.supabase.com',
   port: 443,
-  path: `/v1/queries`,
+  path: `/v1/projects/${PROJECT_REF}/database/query`,
   method: 'POST',
   headers: {
     'Authorization': `Bearer ${TOKEN}`,

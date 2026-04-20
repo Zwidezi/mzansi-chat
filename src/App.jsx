@@ -12,6 +12,7 @@ const ChatScreen = lazy(() => import('./screens/ChatScreen'));
 const Updates = lazy(() => import('./screens/Updates'));
 const Profile = lazy(() => import('./screens/Profile'));
 const Savings = lazy(() => import('./screens/Savings'));
+const Wallet = lazy(() => import('./screens/Wallet'));
 const Contacts = lazy(() => import('./screens/Contacts'));
 
 // Loading fallback for lazy-loaded routes
@@ -101,6 +102,7 @@ const App = () => {
                   <Route path="/updates" element={<Updates />} />
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/savings" element={<Savings />} />
+                  <Route path="/wallet" element={<Wallet />} />
                   <Route path="/contacts" element={<Contacts />} />
                 </Route>
 

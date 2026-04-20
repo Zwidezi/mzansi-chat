@@ -1,6 +1,6 @@
 const https = require('node:https');
 
-const TOKEN = 'sbp_2e312e0ae2b107136da3f9b243c232316f814d36';
+const TOKEN = process.env.SUPABASE_ACCESS_TOKEN;
 const PROJECT_REF = 'uweiptzbtpojnwyozdzf';
 
 const options = {

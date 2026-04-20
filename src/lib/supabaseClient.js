@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { queueMessage, isOnline } from './offlineQueue';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -743,20 +744,49 @@ export const sendMessage = async (chatId, senderHandle, senderName, content, typ
     console.warn('[SendMessage] Metadata heal failed (non-fatal):', e);
   }
 
-  const { data, error } = await supabase
-    .from('messages')
-    .insert([{
+  try {
+    const { data, error } = await supabase
+      .from('messages')
+      .insert([{
+        chat_id: chatId,
+        sender_handle: senderHandle,
+        sender_name: senderName,
+        content,
+        type,
+        metadata,
+        is_read: false
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+    return { message: data, error: null };
+  } catch (error) {
+    console.warn('[SendMessage] Error, check connectivity:', error.message);
+    
+    // If we are offline or it's a network error, queue it
+    const pendingMsg = {
       chat_id: chatId,
       sender_handle: senderHandle,
       sender_name: senderName,
       content,
       type,
-      metadata
-    }])
-    .select()
-    .single();
+      metadata,
+      tempId: Date.now()
+    };
+    
+    const queued = await queueMessage(pendingMsg);
+    return { message: queued ? pendingMsg : null, error, isQueued: queued };
+  }
+};
 
-  return { message: data, error };
+export const markMessagesAsRead = async (chatId, myHandle) => {
+  if (!chatId || !myHandle) return;
+  const { error } = await supabase.rpc('mark_chat_as_read', {
+    target_chat_id: chatId,
+    viewer_handle: myHandle
+  });
+  if (error) console.error('[MarkAsRead] Error:', error);
 };
 
 export const getMessages = async (chatId, limit = 50, offset = 0) => {
@@ -771,15 +801,19 @@ export const getMessages = async (chatId, limit = 50, offset = 0) => {
   return data;
 };
 
-// Subscribe to new messages in real-time (per-chat channel to avoid cross-talk)
-export const subscribeToMessages = (chatId, callback) => {
+// Subscribe to new messages and updates (read receipts)
+export const subscribeToMessages = (chatId, callback, onUpdate) => {
   const channelName = chatId ? `messages-${chatId}` : 'messages-global';
   return supabase
     .channel(channelName)
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
-      // Only forward messages for this chat (or all if no chatId filter)
       if (!chatId || payload.new.chat_id === chatId) {
         callback(payload.new);
+      }
+    })
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
+      if ((!chatId || payload.new.chat_id === chatId) && onUpdate) {
+        onUpdate(payload.new);
       }
     })
     .subscribe();
@@ -889,8 +923,13 @@ export const getDmChatId = (handle1, handle2) => {
 // ═══════════════════════════════════════
 
 // Helper: Client-side image compression for 'Data-Light' savings
-export const compressImage = async (file, maxWidth = 1024, quality = 0.7) => {
+export const compressImage = async (file, maxWidth = 1024) => {
   if (!file || !file.type.startsWith('image/') || file.type === 'image/gif') return file;
+  
+  // Dynamic quality based on "Data Saving Mode"
+  const isDataSaving = localStorage.getItem('mzansi_data_saving') !== 'false';
+  const quality = isDataSaving ? 0.4 : 0.8; // Eco = 40%, Premium = 80%
+
 
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -924,7 +963,13 @@ export const compressImage = async (file, maxWidth = 1024, quality = 0.7) => {
             type: 'image/jpeg',
             lastModified: Date.now(),
           });
-          console.log(`[Data-Light] Compressed: ${(file.size / 1024).toFixed(1)}KB -> ${(compressedFile.size / 1024).toFixed(1)}KB`);
+          
+          // Track savings
+          const savedBytes = Math.max(0, file.size - compressedFile.size);
+          const currentTotal = parseInt(localStorage.getItem('mzansi_data_saved') || '0');
+          localStorage.setItem('mzansi_data_saved', (currentTotal + savedBytes).toString());
+          
+          console.log(`[Data-Light] Compressed: ${(file.size / 1024).toFixed(1)}KB -> ${(compressedFile.size / 1024).toFixed(1)}KB (Saved: ${(savedBytes / 1024).toFixed(1)}KB)`);
           resolve(compressedFile);
         }, 'image/jpeg', quality);
       };
@@ -1094,4 +1139,32 @@ export const hashPinSecure = async (pin) => {
   return Array.from(new Uint8Array(derivedBits))
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
+};
+
+// ═══════════════════════════════════════
+// Stokvel Vault Persistence
+// ═══════════════════════════════════════
+
+export const recordStokvelContribution = async (chatId, userHandle, amount, reference = null) => {
+  const { data, error } = await supabase
+    .from('stokvel_contributions')
+    .insert([{
+      chat_id: chatId,
+      user_handle: userHandle,
+      amount: parseFloat(amount),
+      payment_reference: reference
+    }])
+    .select()
+    .single();
+  return { contribution: data, error };
+};
+
+export const getStokvelContributions = async (chatId) => {
+  const { data, error } = await supabase
+    .from('stokvel_contributions')
+    .select('*')
+    .eq('chat_id', chatId)
+    .order('created_at', { ascending: false });
+  if (error) return [];
+  return data;
 };

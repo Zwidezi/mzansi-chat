@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { TRANSLATIONS } from '../../constants/translations';
 import { useState, useEffect, useRef } from 'react';
 import { setOnlineStatus, subscribeToMessages } from '../../lib/supabaseClient';
+import { ShieldCheck } from 'lucide-react';
 
 const BEEP_URL = "https://assets.mixkit.co/active_storage/sfx/2358/2358-preview.mp3";
 
@@ -123,10 +124,17 @@ const MainShell = () => {
       <Header
         user={currentUser}
         onLogout={handleLogout}
-        showBack={location.pathname !== '/chats' && location.pathname !== '/updates' && location.pathname !== '/profile' && location.pathname !== '/savings' && location.pathname !== '/contacts'}
+        showBack={location.pathname !== '/chats' && location.pathname !== '/updates' && location.pathname !== '/profile' && location.pathname !== '/savings' && location.pathname !== '/contacts' && location.pathname !== '/wallet'}
       />
 
-      <main className="main-content" style={{ flexGrow: 1, overflowY: 'auto' }}>
+      <main className="main-content" style={{ flexGrow: 1, overflowY: 'auto', position: 'relative' }}>
+        <div style={{ 
+          position: 'sticky', top: 0, zIndex: 5, background: 'rgba(15,15,15,0.8)', 
+          backdropFilter: 'blur(8px)', padding: '4px 12px', borderBottom: '1px solid var(--border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.65rem', color: 'var(--text-dim)', opacity: 0.8
+        }}>
+          <ShieldCheck size={10} color="var(--primary)" /> ubuntu secure v4.1.0-alpha
+        </div>
         <Outlet context={{ t, lang }} />
       </main>
 

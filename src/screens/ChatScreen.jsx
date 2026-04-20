@@ -3,11 +3,14 @@ import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import {
   Plus, Send, Mic, XCircle, ImageIcon, Film, Landmark, MapPin,
   Phone, Video, Search, MoreVertical, X, CheckCheck,
-  ChevronRight, Users, Users as UsersIcon, Database, Octagon, CheckCircle, Zap, Trash2
+  ChevronRight, Users, Users as UsersIcon, Database, Octagon, CheckCircle, Zap, Trash2,
+  Cloud, Clock, CloudOff, ShieldCheck
 } from 'lucide-react';
+import { setupConnectivityListeners, retryPendingMessages, isOnline } from '../lib/offlineQueue';
 import {
-  getMessages, sendMessage, subscribeToMessages, getUser, uploadMedia, deleteMessage
+  getMessages, sendMessage, subscribeToMessages, getUser, uploadMedia, deleteMessage, markMessagesAsRead
 } from '../lib/supabaseClient';
+
 import { getLindiweResponse } from '../lib/geminiService';
 import { useAuth } from '../context/AuthContext';
 import { useCall } from '../hooks/useCall';
@@ -58,8 +61,12 @@ const MessageBubble = ({ msg, isSelf, onDelete }) => {
       style={{ userSelect: 'none' }}
     >
       {msg.content}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
-        <CheckCheck size={14} color="var(--text-muted)" />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px', gap: '4px', alignItems: 'center' }}>
+        {msg.tempId && !msg.id ? (
+          <Clock size={12} color="var(--text-muted)" className="spin-slow" />
+        ) : (
+          <CheckCheck size={14} color={msg.is_read ? 'var(--primary)' : 'var(--text-muted)'} />
+        )}
       </div>
     </div>
   );
@@ -89,9 +96,11 @@ const ChatScreen = () => {
   const [transferAmount, setTransferAmount] = useState("50");
   const [paymentStep, setPaymentStep] = useState('list'); // 'list' | 'amount'
   const [otherUserStatus, setOtherUserStatus] = useState({ is_online: false, last_seen: null });
+  const [scamAlert, setScamAlert] = useState(null);
 
   const scrollRef = useRef();
   const fileInputRef = useRef();
+  const textareaRef = useRef();
   const presenceInterval = useRef(null);
   const MESSAGE_PAGE_SIZE = 50;
   const MAX_MESSAGE_LENGTH = 2000;
@@ -219,6 +228,10 @@ const ChatScreen = () => {
       setHasMore(msgs.length >= MESSAGE_PAGE_SIZE);
       setLoading(false);
 
+      if (currentUser?.handle) {
+        markMessagesAsRead(id, currentUser.handle);
+      }
+
       // Poll presence every 30s for DMs
       if (otherHandle) {
         presenceInterval.current = setInterval(() => fetchPresence(otherHandle), 30000);
@@ -227,16 +240,42 @@ const ChatScreen = () => {
 
     initChat();
 
-    // Subscribe to new messages (per-chat channel)
-    const subscription = subscribeToMessages(id, (newMsg) => {
-      setMessages(prev => [...prev, newMsg]);
-    });
+    // Connectivity Listeners (Setup retry when coming back online)
+    const cleanup = setupConnectivityListeners(
+      () => {
+        console.log('[Connectivity] Online - retrying queue');
+        retryPendingMessages(async (msg) => {
+          if (msg.chat_id === id) {
+            const { message, error } = await sendMessage(msg.chat_id, msg.sender_handle, msg.sender_name, msg.content, msg.type, msg.metadata);
+            if (!error) setMessages(prev => [...prev.filter(m => m.tempId !== msg.tempId), message]);
+          }
+        });
+      },
+      () => console.log('[Connectivity] Offline')
+    );
+
+    // Subscribe to new messages and updates (read receipts)
+    const subscription = subscribeToMessages(
+      id, 
+      (newMsg) => {
+        setMessages(prev => [...prev, newMsg]);
+        // If we're the recipient, mark it as read immediately
+        if (newMsg.sender_handle !== currentUser?.handle) {
+          markMessagesAsRead(id, currentUser?.handle);
+        }
+      },
+      (updatedMsg) => {
+        // Update read status in real-time
+        setMessages(prev => prev.map(m => m.id === updatedMsg.id ? updatedMsg : m));
+      }
+    );
 
     return () => {
       subscription.unsubscribe();
       if (presenceInterval.current) clearInterval(presenceInterval.current);
+      cleanup();
     };
-  }, [id]);
+  }, [id, currentUser?.handle]);
 
   // Load older messages (infinite scroll)
   const loadMoreMessages = async () => {
@@ -247,6 +286,28 @@ const ChatScreen = () => {
     setMessages(prev => [...olderMsgs, ...prev]);
     setLoadingMore(false);
   };
+
+  // Gatekeeper AI: Scam Detection
+  useEffect(() => {
+    if (messages.length === 0 || isAI) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.sender_handle === currentUser?.handle) return;
+
+    const content = lastMsg.content?.toLowerCase() || '';
+    const suspiciousWords = ['pin', 'password', 'verify', 'bank', 'login', 'ott', 'voucher', 'airtime', 'reset'];
+    const hasSuspiciousLink = /http|www|\.com|\.net|\.org|\.za/i.test(content);
+    const hasSuspiciousKeywords = suspiciousWords.some(word => content.includes(word));
+
+    if (hasSuspiciousLink && hasSuspiciousKeywords) {
+      setScamAlert({
+        title: "Security Risk Detected",
+        message: "Lindiwe AI flagged this message as a potential scam. Never share your 3 recovery words or PIN lock over chat.",
+        icon: <ShieldCheck size={20} color="#f87171" />
+      });
+    } else {
+      setScamAlert(null);
+    }
+  }, [messages, currentUser?.handle, isAI]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -384,9 +445,28 @@ const ChatScreen = () => {
         </div>
       </header>
 
+      {scamAlert && (
+        <div style={{
+          background: 'rgba(239,68,68,0.15)', borderBottom: '1px solid rgba(239,68,68,0.2)',
+          padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px',
+          animation: 'slideDown 0.3s ease-out'
+        }}>
+          <Octagon size={20} color="#f87171" />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: '800', fontSize: '0.8rem', color: '#f87171' }}>{scamAlert.title}</div>
+            <div style={{ fontSize: '0.75rem', color: 'white', opacity: 0.9 }}>{scamAlert.message}</div>
+          </div>
+          <X size={16} onClick={() => setScamAlert(null)} style={{ cursor: 'pointer', opacity: 0.5 }} />
+        </div>
+      )}
+
       <main className="main-content" style={{ flexGrow: 1, padding: '20px' }} ref={scrollRef}>
         {showVault ? (
-          <StokvelVault messages={messages} t={t} onContribute={(amt) => sendMessage(id, currentUser.handle, currentUser.name, `Contributed R${amt} to the vault!`, 'contribution', { amount: amt })} />
+          <StokvelVault 
+            chatId={id} 
+            t={t} 
+            onContribute={(amt) => sendMessage(id, currentUser.handle, currentUser.name, `Contributed R${amt} to the vault!`, 'contribution', { amount: amt })} 
+          />
         ) : (
           <div className="messages-list">
             {messages.map((msg, i) => (
@@ -440,28 +520,107 @@ const ChatScreen = () => {
 
       <footer className="chat-input-area" style={{ padding: '12px 16px', background: 'var(--surface)', borderTop: '1px solid var(--border)' }}>
         {showActionSheet && (
-          <div className="action-sheet" style={{ bottom: '80px', left: '16px', right: '16px', position: 'absolute' }}>
-            <div className="action-item" onClick={() => fileInputRef.current.click()}><div className="action-icon-circle" style={{ background: '#10b981' }}><ImageIcon size={22} /></div></div>
-            <div className="action-item"><div className="action-icon-circle" style={{ background: '#ec4899' }}><Film size={22} /></div></div>
-            <div className="action-item" onClick={() => setShowBankModal(true)}><div className="action-icon-circle" style={{ background: '#f59e0b' }}><Landmark size={22} /></div></div>
-            <div className="action-item"><div className="action-icon-circle" style={{ background: '#3b82f6' }}><MapPin size={22} /></div></div>
+          <div className="action-sheet glass" style={{ 
+            bottom: '85px', left: '16px', right: '16px', position: 'absolute',
+            background: 'rgba(255, 255, 255, 0.05)',
+            backdropFilter: 'blur(25px)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '24px',
+            padding: '20px',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: '12px',
+            animation: 'slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            boxShadow: '0 10px 40px rgba(0,0,0,0.4)',
+            zIndex: 1000
+          }}>
+            <div className="action-item" onClick={() => { fileInputRef.current.click(); setShowActionSheet(false); }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+              <div className="action-icon-circle" style={{ background: 'var(--success)', color: 'white', width: '50px', height: '50px', borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ImageIcon size={22} /></div>
+              <span style={{ fontSize: '0.65rem', fontWeight: '700', color: 'var(--text-muted)' }}>Gallery</span>
+            </div>
+            <div className="action-item" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+              <div className="action-icon-circle" style={{ background: '#ec4899', color: 'white', width: '50px', height: '50px', borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Film size={22} /></div>
+              <span style={{ fontSize: '0.65rem', fontWeight: '700', color: 'var(--text-muted)' }}>Video</span>
+            </div>
+            <div className="action-item" onClick={() => { setShowBankModal(true); setShowActionSheet(false); }} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+              <div className="action-icon-circle" style={{ background: 'var(--primary)', color: 'white', width: '50px', height: '50px', borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Landmark size={22} /></div>
+              <span style={{ fontSize: '0.65rem', fontWeight: '700', color: 'var(--text-muted)' }}>Payment</span>
+            </div>
+            <div className="action-item" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+              <div className="action-icon-circle" style={{ background: '#3b82f6', color: 'white', width: '50px', height: '50px', borderRadius: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><MapPin size={22} /></div>
+              <span style={{ fontSize: '0.65rem', fontWeight: '700', color: 'var(--text-muted)' }}>Location</span>
+            </div>
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <button onClick={() => setShowActionSheet(!showActionSheet)} style={{ color: showActionSheet ? 'var(--primary)' : 'var(--text-muted)' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+          <button 
+            onClick={() => setShowActionSheet(!showActionSheet)} 
+            style={{ 
+              color: showActionSheet ? 'var(--primary)' : 'var(--text-muted)', 
+              padding: '10px 0',
+              display: 'flex',
+              alignItems: 'center'
+            }}
+          >
             <Plus size={28} style={{ transform: showActionSheet ? 'rotate(45deg)' : 'none', transition: 'transform 0.2s' }} />
           </button>
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-            placeholder={t.new_msg}
-            style={{ flex: 1, padding: '14px 20px', borderRadius: '24px', border: '1px solid var(--border)', background: 'var(--bg-dark)', color: 'white' }}
-          />
-          <button onClick={handleSend} style={{ background: 'var(--primary-gradient)', color: 'white', borderRadius: '50%', width: '48px', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Send size={20} />
+          
+          <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <textarea
+              ref={textareaRef}
+              rows="1"
+              value={inputText}
+              onChange={(e) => {
+                setInputText(e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                  if (textareaRef.current) textareaRef.current.style.height = 'auto';
+                }
+              }}
+              placeholder={t.new_msg}
+              style={{ 
+                width: '100%', 
+                padding: '12px 18px', 
+                borderRadius: '22px', 
+                border: '1px solid var(--border)', 
+                background: 'var(--bg-dark)', 
+                color: 'white',
+                resize: 'none',
+                maxHeight: '120px',
+                fontSize: '1rem',
+                lineHeight: '1.4',
+                outline: 'none',
+                display: 'block'
+              }}
+            />
+          </div>
+
+          <button 
+            onClick={() => {
+              handleSend();
+              if (textareaRef.current) textareaRef.current.style.height = 'auto';
+            }} 
+            style={{ 
+              background: 'var(--primary-gradient)', 
+              color: 'white', 
+              borderRadius: '50%', 
+              width: '46px', 
+              height: '46px', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              flexShrink: 0,
+              boxShadow: '0 4px 15px rgba(0,0,0,0.2)',
+              opacity: inputText.trim() ? 1 : 0.6
+            }}
+          >
+            <Send size={18} />
           </button>
         </div>
         <input type="file" ref={fileInputRef} onChange={handleMediaUpload} style={{ display: 'none' }} accept="image/*" />

@@ -188,13 +188,8 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), localApiPlugin()],
     build: {
-      minify: 'terser',
-      terserOptions: {
-        compress: {
-          drop_console: true,
-          drop_debugger: true,
-        },
-      },
+      target: 'esnext',
+      sourcemap: false,
     },
   }
 })

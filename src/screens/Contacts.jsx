@@ -178,6 +178,29 @@ const Contacts = () => {
                     </p>
                 )}
 
+                {/* Official AI Assistant */}
+                <div key="lindiwe" className="list-item" onClick={() => navigate('/chat/lindiwe')} style={{ background: 'rgba(var(--primary-rgb), 0.05)', border: '1px solid rgba(var(--primary-rgb), 0.1)' }}>
+                    <div className="avatar" style={{ background: 'var(--primary-gradient)', color: 'white' }}>
+                        L
+                    </div>
+                    <div className="item-content" style={{ flex: 1 }}>
+                        <div className="item-header">
+                            <span className="item-name" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                Lindiwe (AI)
+                                <CheckCircle2 size={14} color="var(--primary)" fill="var(--primary-light)" />
+                            </span>
+                            <span className="item-time" style={{ fontSize: '0.7rem', color: 'var(--primary)', fontWeight: '700' }}>Official</span>
+                        </div>
+                        <div className="item-preview">Your Ubuntu assistant</div>
+                    </div>
+                    <button
+                        className="btn-icon"
+                        style={{ background: 'var(--primary)', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    >
+                        <MessageCircle size={16} color="white" />
+                    </button>
+                </div>
+
                 {filteredContacts.map(contact => (
                     <div key={contact.handle} className="list-item" style={{ position: 'relative' }}>
                         <div className="avatar" style={{ position: 'relative' }}>

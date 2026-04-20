@@ -1,4 +1,4 @@
-import { MessageSquare, Zap, User, Landmark, Users } from 'lucide-react';
+import { MessageSquare, Zap, User, Landmark, Users, Wallet } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
 const BottomNav = ({ t }) => {
@@ -23,6 +23,10 @@ const BottomNav = ({ t }) => {
       <NavLink to="/savings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
         <Landmark size={24} />
         <span>{t.savings}</span>
+      </NavLink>
+      <NavLink to="/wallet" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+        <Wallet size={24} />
+        <span>Wallet</span>
       </NavLink>
     </nav>
   );

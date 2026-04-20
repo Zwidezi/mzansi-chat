@@ -1,26 +1,54 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Database, TrendingUp, Users, ArrowUpRight, CreditCard } from 'lucide-react';
 import { PaystackButton } from 'react-paystack';
+import { getStokvelContributions, recordStokvelContribution } from '../../lib/supabaseClient';
+import { useAuth } from '../../context/AuthContext';
 
-const StokvelVault = ({ messages, onContribute }) => {
-  const contributions = messages.filter(m => m.type === 'contribution');
-  const total = contributions.reduce((acc, m) => acc + (parseFloat(m.metadata?.amount) || 0), 0);
-  const uniqueMembers = new Set(contributions.map(m => m.sender_handle)).size;
+const StokvelVault = ({ chatId, onContribute }) => {
+  const { currentUser } = useAuth();
+  const [realContributions, setRealContributions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  const total = realContributions.reduce((acc, c) => acc + (parseFloat(c.amount) || 0), 0);
+  const uniqueMembers = new Set(realContributions.map(c => c.user_handle)).size;
 
   const [payAmount, setPayAmount] = useState("100");
   const [showPayment, setShowPayment] = useState(false);
 
+  useEffect(() => {
+    const fetchVault = async () => {
+      const data = await getStokvelContributions(chatId);
+      setRealContributions(data);
+      setLoading(false);
+    };
+    if (chatId) fetchVault();
+  }, [chatId]);
+
   const publicKey = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
   const isTestMode = !publicKey || publicKey.startsWith('pk_test');
 
-  const handlePaymentSuccess = (_reference) => {
+  const handlePaymentSuccess = async (reference) => {
+    // 1. Record in persistent table
+    const { contribution, error } = await recordStokvelContribution(
+      chatId, 
+      currentUser.handle, 
+      payAmount, 
+      reference?.reference || 'demo_ref'
+    );
+    
+    if (!error && contribution) {
+      setRealContributions(prev => [contribution, ...prev]);
+    }
+
+    // 2. Notify chat (legacy message)
     onContribute(payAmount);
+    
     setShowPayment(false);
     setPayAmount("100");
   };
 
   const componentProps = publicKey ? {
-    email: 'user@mzansichat.com',
+    email: `${currentUser?.handle || 'user'}@mzansichat.com`,
     amount: parseFloat(payAmount) * 100,
     publicKey,
     currency: 'ZAR',
@@ -29,7 +57,7 @@ const StokvelVault = ({ messages, onContribute }) => {
     onClose: () => setShowPayment(false),
     metadata: {
       custom_fields: [
-        { display_name: "Stokvel Contribution", variable_name: "stokvel", value: "community_vault" }
+        { display_name: "Stokvel Contribution", variable_name: "stokvel", value: chatId }
       ]
     }
   } : {};
@@ -129,17 +157,19 @@ const StokvelVault = ({ messages, onContribute }) => {
       )}
 
       <h4 style={{ fontWeight: '800', fontSize: '0.9rem', marginBottom: '12px', color: 'var(--text-secondary)' }}>Recent Activity</h4>
-      {contributions.length === 0 ? (
+      {loading ? (
+        <div className="shimmer" style={{ height: '50px', borderRadius: '12px' }}></div>
+      ) : realContributions.length === 0 ? (
         <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>No contributions yet. Be the first!</p>
       ) : (
-        contributions.slice(-5).reverse().map((c, i) => (
-          <div key={i} className="list-item" style={{ marginBottom: '8px', background: 'var(--surface-light)' }}>
+        realContributions.slice(0, 10).map((c, i) => (
+          <div key={c.id || i} className="list-item" style={{ marginBottom: '8px', background: 'var(--surface-light)' }}>
              <div className="avatar" style={{ width: '32px', height: '32px', fontSize: '0.8rem', marginRight: '12px' }}>
-                {c.sender_handle?.[0]?.toUpperCase() || '?'}
+                {c.user_handle?.[0]?.toUpperCase() || '?'}
              </div>
              <div className="item-content">
-                <span className="item-name" style={{ fontSize: '0.9rem' }}>@{c.sender_handle}</span>
-                <span className="item-preview" style={{ color: 'var(--success)', fontWeight: '700' }}>+ R {c.metadata?.amount}</span>
+                <span className="item-name" style={{ fontSize: '0.9rem' }}>@{c.user_handle}</span>
+                <span className="item-preview" style={{ color: 'var(--success)', fontWeight: '700' }}>+ R {c.amount}</span>
              </div>
              <ArrowUpRight size={14} color="var(--success)" />
           </div>

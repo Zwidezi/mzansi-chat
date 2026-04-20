@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { Plus, Users, Ghost, RefreshCw, X, Music, Type, Image as ImageIcon, Send, Volume2 } from 'lucide-react';
+import { Plus, Users, Ghost, RefreshCw, X, Music, Type, Image as ImageIcon, Send, Volume2, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react';
 import { 
   getCommunities, joinCommunity, getActiveStatuses, uploadStatusFile, createCommunity, sendMessage, getDmChatId 
 } from '../lib/supabaseClient';
@@ -768,6 +768,20 @@ const Updates = () => {
 
       <h2 style={{ fontSize: '1.25rem', fontWeight: '800', marginBottom: '16px' }}>{t.discovery}</h2>
       
+      {/* Featured AI Assistant */}
+      <div className="community-card" style={{ background: 'var(--primary-gradient)', border: 'none', marginBottom: '24px' }}>
+         <div className="community-tag" style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}>Official AI</div>
+         <h3 style={{ fontSize: '1.25rem', fontWeight: '900', color: 'white' }}>Lindiwe AI</h3>
+         <p style={{ fontSize: '0.95rem', color: 'rgba(255,255,255,0.9)', margin: '10px 0' }}>Your Ubuntu-powered assistant. Ask me about weather, jokes, or how to use MzansiChat.</p>
+         <button 
+           className="btn-primary" 
+           style={{ background: 'white', color: 'var(--primary)', fontWeight: '800' }} 
+           onClick={() => navigate('/chat/lindiwe')}
+         >
+           <MessageCircle size={18} /> Chat with Lindiwe
+         </button>
+      </div>
+
       <GoogleAd slot="updates-discovery-top" />
 
       <div className="discovery-list">
